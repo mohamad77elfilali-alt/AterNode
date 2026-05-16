@@ -61,40 +61,32 @@ class GameSelectionMenu(discord.ui.Select):
                 )
                 await temp_channel.send(content=interaction.user.mention, embed=embed)
                 
-                # هنا نقوم باستدعاء اللعبة المحددة داخلياً من الـ Cogs وتشغيلها في هذه القناة
-                bot = interaction.client
-                cog_name = "GamesCog" # الاسم البرمجي لكلاس الألعاب لديك
-                # ملاحظة مبرمج: سنمرر temp_channel للعبة لتبدأ بالداخل مباشرة
-                
             except Exception as e:
                 await interaction.followup.send(f"❌ حدث خطأ أثناء إنشاء قناتك الخاصة: {e}", ephemeral=True)
-
         else:
-            # --- مسار اللعب الجماعي: اللعب في قنوات الألعاب العامة المفتوحة للجميع ---
+            # --- مسار اللعب الجماعي ---
             await interaction.followup.send(f"🎉 قمت باختيار اللعبة الجماعية: `{game_selected}`! سيتم فتح التحدي للجميع الآن في القناة المخصصة.", ephemeral=True)
-            # هنا يتم توجيه وإطلاق كود اللعبة الجماعية مباشرة ليراها الجميع ويشاركون بالأزرار
 
 
 class GameControlView(discord.ui.View):
     """لوحة التحكم الثابتة التي تحتوي على أزرار اللعب الجماعي والفردي"""
     def __init__(self):
-        super().__init__(timeout=None) # timeout=None يجعل الأزرار دائمة ولا تموت أبداً
+        super().__init__(timeout=None) # تفعيل الحالة الدائمة للأزرار الأبديّة
 
     @discord.ui.button(label="👥 بدء تحدي جماعي", style=discord.ButtonStyle.success, custom_id="persistent:multiplayer")
     async def multiplayer_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # فتح قائمة خيارات الألعاب الجماعية
         view = discord.ui.View(timeout=60)
         view.add_item(GameSelectionMenu(mode="multiplayer"))
         await interaction.response.send_message("👥 اختر اللعبة الجماعية ليتنافس فيها الجميع بالشات العام:", view=view, ephemeral=True)
 
     @discord.ui.button(label="👤 لعب فردي (سولو)", style=discord.ButtonStyle.primary, custom_id="persistent:solo")
     async def solo_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # فتح قائمة خيارات الألعاب الفردية
         view = discord.ui.View(timeout=60)
         view.add_item(GameSelectionMenu(mode="solo"))
         await interaction.response.send_message("👤 اختر لعبتك المفضلة لبدء الجولة في غرفتك الخاصة:", view=view, ephemeral=True)
 
-# --- 2. الهيكل الرئيسي للبوت وإدارته ---
+
+# --- 2. الهيكل الرئيسي للبوت وإدارته المطور ---
 
 class UltraGamesBot(commands.Bot):
     def __init__(self):
@@ -103,14 +95,17 @@ class UltraGamesBot(commands.Bot):
         self.db = DatabaseManager()
 
     async def setup_hook(self):
-        # 1. ربط قاعدة البيانات
         print("⚡ [System] جاري تشغيل حوض اتصالات قاعدة البيانات...")
-        await self.db.initialize()
+        # إصلاح التحقق: التأكد من نجاح الاتصال قبل استكمال شحن الأزرار والـ Cogs
+        db_connected = await self.db.initialize()
+        if not db_connected:
+            print("🛑 [Fatal Error] تم إيقاف عملية الإقلاع نظرًا لفشل الاتصال بقاعدة البيانات. تحقق من DATABASE_URL.")
+            return
 
-        # register للـ View الدائم لكي يتعرف عليه ديسكورد فوراً عند إعادة التشغيل
+        # تسجيل واجهة الأزرار التفاعلية الدائمة بأمان بعد ضمان قاعدة البيانات
         self.add_view(GameControlView())
 
-        # 2. تحميل ملفات الألعاب من مجلد games_cogs
+        # تحميل حزم الألعاب ديناميكيًا من المجلد الفرعي لإدارتها كـ Cogs منفصلة
         cogs_to_load = [
             "games_cogs.board_games",
             "games_cogs.casino",
@@ -125,7 +120,7 @@ class UltraGamesBot(commands.Bot):
             except Exception as e:
                 print(f"❌ فشل تحميل ملف {cog}: {e}")
         
-        # 3. المزامنة العالمية لأوامر السلاش
+        # مزامنة أوامر السلاش عالميًا مع خوادم ديسكورد
         try:
             synced = await self.tree.sync()
             print(f"🔄 تم مزامنة {len(synced)} من أوامر السلاش بنجاح.")
@@ -134,7 +129,7 @@ class UltraGamesBot(commands.Bot):
 
     async def on_ready(self):
         print("=" * 50)
-        print(f'🕹️ {self.user.name} (نظام التحكم المركزي للألعاب جاهز بالكامل!)')
+        print(f'🕹️ {self.user.name} (نظام التحكم المركزي للألعاب جاهز بالكامل والآن ONLINE!)')
         print("=" * 50)
         await self.change_presence(
             activity=discord.Activity(type=discord.ActivityType.playing, name="🎮 /setup_games")
@@ -144,15 +139,12 @@ bot = UltraGamesBot()
 
 # --- 3. أمر إعداد وتجهيز قناة الألعاب الرئيسية ---
 
-@bot.tree.command(name="setup_games", description="إعداد وتخصيعة قناة التحكم الرئيسية في منظومة الألعاب والأزرار الدائمة")
-@app_commands.checks.has_permissions(administrator=True) # للمسؤولين فقط لتفادي التخريب
+@bot.tree.command(name="setup_games", description="إعداد وتخصيص قناة التحكم الرئيسية في منظومة الألعاب والأزرار الدائمة")
+@app_commands.checks.has_permissions(administrator=True)
 async def setup_games(interaction: discord.Interaction, channel: discord.TextChannel = None):
     await interaction.response.defer()
-    
-    # إذا لم يحدد قناة، نعتمد القناة الحالية التي كتب فيها الأمر
     target_channel = channel or interaction.channel
     
-    # بناء رسالة التحكم الفخمة بنمط النيون
     embed = discord.Embed(
         title="🎮 مركز ألعاب ومنافسات السيرفر ➔ CONTROL PANEL",
         description=(
@@ -162,17 +154,15 @@ async def setup_games(interaction: discord.Interaction, channel: discord.TextCha
             "• **`👤 لعب فردي (سولو)`**: لفتح غرفة نصية مؤقتة خاصة ومخفية بك تماماً، تلعب فيها وحدك لحفظ رصيدك ونقاطك ثم تُحذف تلقائياً.\n\n"
             "👇 *اضغط على الزر أدناه لتحديد واختيار نوع اللعبة والبدء فوراً!*"
         ),
-        color=discord.Color.from_rgb(180, 0, 255) # نيون بنفسجي فخم
+        color=discord.Color.from_rgb(180, 0, 255)
     )
-    embed.set_image(url="https://i.imgur.com/x9n7SjN.gif") # يمكنك استبداله برابط خلفية متحركة تناسب ذوقك
+    embed.set_image(url="https://i.imgur.com/x9n7SjN.gif")
     embed.set_footer(text="🌟 نظام إداري ذكي - تم التأمين والحفظ بقاعدة البيانات")
     
-    # إرسال لوحة الأزرار في القناة المحددة
     panel_message = await target_channel.send(embed=embed, view=GameControlView())
     
-    # حفظ البيانات في PostgreSQL لكي لا ينساها البوت أبداً عند الريستارت
+    # حفظ الإعدادات في PostgreSQL
     await bot.db.set_game_channel(interaction.guild_id, target_channel.id, panel_message.id)
-    
     await interaction.followup.send(f"✅ تم تهيئة وإطلاق لوحة التحكم بنجاح وحفظها في قاعدة البيانات داخل قناة: {target_channel.mention}!")
 
 # تتبع وقراءة التوكن من لوحة تحكم Railway البيئية
