@@ -1,1113 +1,1576 @@
-"""
-Solo Arcade Engine - 50+ Game Collection
-Production-Ready | Dynamic Private Channel Creation | Button-Based Grid UI
-"""
-
-import asyncio
-import logging
+import discord
+from discord.ext import commands
+import asyncpg
 import random
-from typing import Dict, List, Optional, Set
+import logging
+from typing import Optional, Dict, List
+import asyncio
 from datetime import datetime, timedelta
 
-import discord
-from discord import app_commands
-from discord.ext import commands, tasks
-
-logger = logging.getLogger("SoloArcade")
-
-# Neon color scheme
-NEON_PURPLE = 0x9D00FF
-NEON_CYAN = 0x00F0FF
-NEON_MAGENTA = 0xFF00FF
-NEON_GREEN = 0x39FF14
-NEON_ORANGE = 0xFF6600
-
-# ============================================================================
-# GAME DATA DEFINITIONS
-# ============================================================================
-
-TRIVIA_QUESTIONS = [
-    {"q": "What is the capital of France?", "a": "Paris", "opts": ["London", "Berlin", "Paris", "Madrid"]},
-    {"q": "Which planet is closest to the sun?", "a": "Mercury", "opts": ["Venus", "Mercury", "Earth", "Mars"]},
-    {"q": "What is the largest ocean on Earth?", "a": "Pacific", "opts": ["Atlantic", "Indian", "Arctic", "Pacific"]},
-    {"q": "Who wrote 'Romeo and Juliet'?", "a": "Shakespeare", "opts": ["Marlowe", "Shakespeare", "Bacon", "Jonson"]},
-    {"q": "What is the chemical symbol for gold?", "a": "Au", "opts": ["Go", "Gd", "Au", "Ag"]},
-    {"q": "How many continents are there?", "a": "7", "opts": ["5", "6", "7", "8"]},
-    {"q": "What is the smallest country in the world?", "a": "Vatican City", "opts": ["Monaco", "Vatican City", "Malta", "Cyprus"]},
-    {"q": "What year did the Titanic sink?", "a": "1912", "opts": ["1911", "1912", "1913", "1914"]},
-    {"q": "Which element has the atomic number 1?", "a": "Hydrogen", "opts": ["Helium", "Lithium", "Hydrogen", "Beryllium"]},
-    {"q": "What is the speed of light?", "a": "299,792 km/s", "opts": ["150,000 km/s", "299,792 km/s", "400,000 km/s", "200,000 km/s"]},
-]
-
-CAPITALS = {
-    "🇺🇸": "Washington D.C.",
-    "🇬🇧": "London",
-    "🇫🇷": "Paris",
-    "🇩🇪": "Berlin",
-    "🇮🇹": "Rome",
-    "🇪🇸": "Madrid",
-    "🇯🇵": "Tokyo",
-    "🇦🇺": "Canberra",
-    "🇨🇦": "Ottawa",
-    "🇳🇿": "Wellington",
-    "🇧🇷": "Brasília",
-    "🇲🇽": "Mexico City",
-    "🇮🇳": "New Delhi",
-    "🇨🇳": "Beijing",
-    "🇷🇺": "Moscow",
-}
-
-FLAGS_TO_COUNTRIES = {
-    "🇺🇸": "United States",
-    "🇬🇧": "United Kingdom",
-    "🇫🇷": "France",
-    "🇩🇪": "Germany",
-    "🇮🇹": "Italy",
-    "🇪🇸": "Spain",
-    "🇯🇵": "Japan",
-    "🇦🇺": "Australia",
-    "🇨🇦": "Canada",
-    "🇳🇿": "New Zealand",
-    "🇧🇷": "Brazil",
-    "🇲🇽": "Mexico",
-    "🇮🇳": "India",
-    "🇨🇳": "China",
-    "🇷🇺": "Russia",
-    "🇰🇷": "South Korea",
-    "🇳🇬": "Nigeria",
-    "🇿🇦": "South Africa",
-}
-
-PROVERBS = [
-    ("A stitch in time saves nine", "Prevention is better than cure"),
-    ("Break the ice", "Start a conversation"),
-    ("Burn the midnight oil", "Work very late"),
-    ("Hit the nail on the head", "Do something exactly right"),
-    ("Piece of cake", "Something very easy"),
-    ("Raining cats and dogs", "Raining very hard"),
-    ("Once in a blue moon", "Happens rarely"),
-    ("Under the weather", "Feeling sick"),
-    ("Cost an arm and a leg", "Very expensive"),
-    ("In the same boat", "In the same situation"),
-]
-
-WORDS_TO_UNSCRAMBLE = [
-    ("DRAZOIL", "LIZARD"),
-    ("ENILPMA", "PINEAPPLE"),
-    ("TLANOCIF", "CONFLICT"),
-    ("RESUODNITQ", "QUESTION"),
-    ("SIEIMUNM", "IMMUNE"),
-    ("RYLIMAF", "FAMILY"),
-    ("REWOLF", "FLOWER"),
-    ("TONRIDEM", "DOMINEER"),
-    ("ELADMP", "AMPLED"),
-    ("TELAM", "METAL"),
-]
-
-MATH_PROBLEMS = [
-    {"q": "15 + 23 = ?", "a": 38},
-    {"q": "47 - 18 = ?", "a": 29},
-    {"q": "12 × 8 = ?", "a": 96},
-    {"q": "144 ÷ 12 = ?", "a": 12},
-    {"q": "2^8 = ?", "a": 256},
-    {"q": "√169 = ?", "a": 13},
-    {"q": "25% of 200 = ?", "a": 50},
-    {"q": "7 × 9 = ?", "a": 63},
-    {"q": "100 - 45 = ?", "a": 55},
-    {"q": "33 + 67 = ?", "a": 100},
-]
-
-# ============================================================================
-# GAME LOGIC FUNCTIONS
-# ============================================================================
-
-async def play_dice_roll(user_id: int) -> str:
-    """🎲 Dice Roll Game"""
-    roll = random.randint(1, 6)
-    return f"🎲 **Dice Roll Result**: You rolled a **{roll}**!\n{['💥 Critical Fail!', '❌ Low Roll', '❌ Below Average', '✅ Average', '✨ Good Roll', '🎯 Critical Success!'][roll-1]}"
-
-async def play_slots(user_id: int) -> str:
-    """🎰 Slot Machine"""
-    symbols = ["🍎", "🍊", "🍋", "🍌", "🍉", "⭐", "💎", "👑"]
-    slot1, slot2, slot3 = [random.choice(symbols) for _ in range(3)]
-    
-    result = f"🎰 **SLOT MACHINE**\n\n**SPIN RESULT:**\n{slot1}  {slot2}  {slot3}\n\n"
-    
-    if slot1 == slot2 == slot3:
-        result += f"🏆 **JACKPOT! ALL MATCH!** You got three {slot1}s!"
-    elif slot1 == slot2 or slot2 == slot3:
-        result += f"✨ **PARTIAL WIN!** Two symbols match!"
-    else:
-        result += f"❌ **No Match** Try again!"
-    
-    return result
-
-async def play_trivia(user_id: int) -> tuple:
-    """🧠 Trivia Challenge"""
-    question_data = random.choice(TRIVIA_QUESTIONS)
-    question = question_data["q"]
-    answer = question_data["a"]
-    options = question_data["opts"]
-    
-    return question, answer, options
-
-async def play_capital_guess(user_id: int) -> tuple:
-    """🌍 Capital Guesser"""
-    flag, capital = random.choice(list(CAPITALS.items()))
-    return flag, capital
-
-async def play_flag_guess(user_id: int) -> tuple:
-    """🗺️ Flag Identifier"""
-    flag, country = random.choice(list(FLAGS_TO_COUNTRIES.items()))
-    return flag, country
-
-async def play_math_challenge(user_id: int) -> tuple:
-    """🧮 Math Mania"""
-    problem = random.choice(MATH_PROBLEMS)
-    question = problem["q"]
-    answer = problem["a"]
-    return question, answer
-
-async def play_proverb_meaning(user_id: int) -> tuple:
-    """📜 Proverb Meaning"""
-    proverb, meaning = random.choice(PROVERBS)
-    return proverb, meaning
-
-async def play_word_reverse(user_id: int) -> str:
-    """🔤 Word Reverse"""
-    words = ["PYTHON", "DISCORD", "GAMING", "CHAMPION", "ADVENTURE", "ZENITH", "MYSTERY", "POWERFUL"]
-    word = random.choice(words)
-    reversed_word = word[::-1]
-    return word, reversed_word
-
-async def play_unscramble(user_id: int) -> tuple:
-    """🧩 Unscramble Challenge"""
-    scrambled, answer = random.choice(WORDS_TO_UNSCRAMBLE)
-    return scrambled, answer
-
-async def play_cyber_fishing(user_id: int) -> str:
-    """🎣 Cyber Fishing Simulator"""
-    catches = ["🐟", "🦈", "🐙", "🦑", "🐠", "🦀", "🪼", "🦐"]
-    rarity = random.randint(1, 100)
-    
-    if rarity > 90:
-        catch = "🦈 LEGENDARY SHARK!"
-        points = 1000
-    elif rarity > 70:
-        catch = "🐙 RARE OCTOPUS!"
-        points = 500
-    elif rarity > 40:
-        catch = "🦑 COMMON SQUID"
-        points = 100
-    else:
-        catch = "🐟 BASIC FISH"
-        points = 25
-    
-    return f"🎣 **CYBER FISHING**\n\nYou cast your line...\n**CATCH:** {catch}\n**POINTS:** +{points}"
-
-async def play_mining_sim(user_id: int) -> str:
-    """⛏️ Cyber Mining Simulator"""
-    ores = [
-        ("💎 DIAMOND", 500),
-        ("🟡 GOLD", 300),
-        ("🟠 COPPER", 100),
-        ("🪨 STONE", 10),
-        ("⚫ COAL", 25),
-        ("🟢 EMERALD", 250),
-    ]
-    
-    ore, points = random.choice(ores)
-    return f"⛏️ **CYBER MINING**\n\nYou swing your pickaxe...\n**MINED:** {ore}\n**ORE VALUE:** +{points}"
-
-async def play_coin_flip(user_id: int) -> tuple:
-    """🪙 Coin Flip"""
-    flip = random.choice(["HEADS", "TAILS"])
-    return flip
-
-async def play_higher_lower(user_id: int) -> tuple:
-    """📈 Higher or Lower"""
-    card = random.randint(1, 13)
-    card_names = {1: "Ace", 11: "Jack", 12: "Queen", 13: "King"}
-    card_name = card_names.get(card, str(card))
-    return card, card_name
-
-async def play_rock_paper_scissors(user_id: int) -> str:
-    """✂️ Rock Paper Scissors"""
-    choices = ["Rock", "Paper", "Scissors"]
-    bot_choice = random.choice(choices)
-    
-    return bot_choice
-
-async def play_number_guess(user_id: int) -> int:
-    """🎯 Number Guessing Game"""
-    secret = random.randint(1, 100)
-    return secret
-
-async def play_spin_wheel(user_id: int) -> str:
-    """🎡 Spin the Wheel"""
-    segments = [
-        ("🏆 MEGA WIN!", "gold"),
-        ("✨ Great Prize!", "cyan"),
-        ("🎁 Nice Prize", "green"),
-        ("😐 Okay Prize", "gray"),
-        ("❌ Try Again", "red"),
-        ("💰 Bonus Prize!", "yellow"),
-        ("🌟 Lucky Draw!", "purple"),
-        ("🎉 Jackpot!", "gold"),
-    ]
-    
-    result = random.choice(segments)
-    return f"🎡 **SPIN THE WHEEL**\n\n{result[0]}"
-
-async def play_memory_tiles(user_id: int) -> str:
-    """🧠 Memory Tile Match"""
-    tiles = ["🎯", "⭐", "💎", "🔥", "🎸", "🎨"]
-    shuffled = tiles + tiles
-    random.shuffle(shuffled)
-    
-    return f"🧠 **MEMORY TILES**\n\nMatch the pairs! {' '.join(shuffled[:6])}"
-
-async def play_riddle_solver(user_id: int) -> tuple:
-    """🎭 Riddle Solver"""
-    riddles = [
-        ("I have cities but no houses, forests but no trees, and water but no fish. What am I?", "A map"),
-        ("The more you take, the more you leave behind. What am I?", "Footsteps"),
-        ("I speak without a mouth and hear without ears. I have no body, but I come alive with wind. What am I?", "An echo"),
-        ("What can travel around the world while staying in a corner?", "A stamp"),
-        ("What gets wetter as it dries?", "A towel"),
-        ("What has a head and a tail but no body?", "A coin"),
-        ("I am not alive, but I grow; I don't have lungs, but I need air. What am I?", "Fire"),
-        ("What question can you never answer yes to?", "Are you asleep?"),
-    ]
-    
-    riddle, answer = random.choice(riddles)
-    return riddle, answer
-
-async def play_color_match(user_id: int) -> str:
-    """🎨 Color Match Challenge"""
-    colors = ["🔴 RED", "🔵 BLUE", "🟢 GREEN", "🟡 YELLOW", "🟠 ORANGE", "🟣 PURPLE"]
-    correct = random.choice(colors)
-    
-    return f"🎨 **COLOR MATCH**\n\nWhich color is displayed?\n**{correct}**\nPoint awarded for speed!"
-
-async def play_fast_math_sprint(user_id: int) -> str:
-    """⚡ Fast Math Sprint"""
-    num1 = random.randint(1, 50)
-    num2 = random.randint(1, 50)
-    operation = random.choice(["+", "-", "*"])
-    
-    if operation == "+":
-        answer = num1 + num2
-    elif operation == "-":
-        answer = num1 - num2
-    else:
-        answer = num1 * num2
-    
-    return f"⚡ **FAST MATH SPRINT**\n\nSolve quickly:\n**{num1} {operation} {num2} = ?**", answer
-
-async def play_emoji_puzzle(user_id: int) -> str:
-    """🎭 Emoji Puzzle"""
-    puzzles = [
-        ("👨‍💼 + 📊 = ?", "Business"),
-        ("🍕 + 🍔 = ?", "Food"),
-        ("🎮 + 🕹️ = ?", "Gaming"),
-        ("📚 + 🧠 = ?", "Knowledge"),
-        ("❤️ + 😊 = ?", "Happiness"),
-    ]
-    
-    puzzle, category = random.choice(puzzles)
-    return f"🎭 **EMOJI PUZZLE**\n\nGuess the category:\n{puzzle}\n**Category:** {category}"
-
-async def play_speed_typer(user_id: int) -> tuple:
-    """✍️ Speed Typer"""
-    phrases = [
-        "The quick brown fox jumps over the lazy dog",
-        "Discord gaming bot supreme entertainment",
-        "Cyberpunk neon elite gaming experience",
-        "Speed typing challenge maximum velocity",
-        "Arcade legends never surrender",
-    ]
-    
-    phrase = random.choice(phrases)
-    return phrase
-
-async def play_anagram_solver(user_id: int) -> str:
-    """🔤 Anagram Solver"""
-    anagrams = [
-        ("LISTEN", "SILENT"),
-        ("EVIL", "VILE"),
-        ("SPARE", "PARSE"),
-        ("LAYER", "RELAY"),
-        ("LEAST", "STEAL"),
-    ]
-    
-    word1, word2 = random.choice(anagrams)
-    return f"🔤 **ANAGRAM SOLVER**\n\nFind the anagram of: **{word1}**\n(Answer: {word2})"
-
-async def play_symbol_match(user_id: int) -> str:
-    """🔮 Symbol Matching"""
-    symbols = ["✂️", "🔒", "🗝️", "⚔️", "🛡️", "🧿", "🎰", "💫"]
-    match1, match2 = random.sample(symbols, 2)
-    
-    return f"🔮 **SYMBOL MATCH**\n\nFind matching pairs:\n{match1} {match2}"
-
-async def play_quick_reaction(user_id: int) -> str:
-    """⚡ Quick Reaction Test"""
-    reactions = ["🟢 GREEN", "🔴 RED", "🔵 BLUE", "🟡 YELLOW"]
-    signal = random.choice(reactions)
-    
-    return f"⚡ **QUICK REACTION**\n\n**REACT TO:** {signal}\nSpeed matters!"
-
-async def play_word_chain(user_id: int) -> str:
-    """🔗 Word Chain Game"""
-    starter_words = ["PYTHON", "GAMING", "DISCORD", "ADVENTURE", "ZENITH"]
-    word = random.choice(starter_words)
-    last_letter = word[-1]
-    
-    return f"🔗 **WORD CHAIN**\n\nStart word: **{word}**\nYour word must start with: **{last_letter}**"
-
-async def play_pattern_finder(user_id: int) -> str:
-    """📊 Pattern Finder"""
-    sequences = [
-        ("2, 4, 6, 8, ?", "10"),
-        ("1, 1, 2, 3, 5, 8, ?", "13"),
-        ("5, 10, 15, 20, ?", "25"),
-        ("1, 4, 9, 16, ?", "25"),
-    ]
-    
-    sequence, answer = random.choice(sequences)
-    return f"📊 **PATTERN FINDER**\n\nComplete the sequence:\n**{sequence}**\n(Answer: {answer})"
-
-async def play_lucky_number(user_id: int) -> str:
-    """🍀 Lucky Number Draw"""
-    your_number = random.randint(1, 1000)
-    winning_number = random.randint(1, 1000)
-    
-    if your_number == winning_number:
-        return f"🍀 **LUCKY DRAW**\n\n🎉 **YOU WIN!** {your_number} was the lucky number!"
-    else:
-        return f"🍀 **LUCKY DRAW**\n\nYour number: {your_number}\nWinning number: {winning_number}\n❌ Close! Try again!"
-
-async def play_achievement_unlocked(user_id: int) -> str:
-    """🏆 Achievement Unlocked"""
-    achievements = [
-        "🏆 FIRST VICTORY",
-        "⚡ SPEED DEMON",
-        "🧠 GENIUS",
-        "💪 POWERHOUSE",
-        "🌟 SUPERSTAR",
-        "👑 CHAMPION",
-        "🎯 SNIPER",
-        "🔥 ON FIRE",
-    ]
-    
-    achievement = random.choice(achievements)
-    return f"🏆 **ACHIEVEMENT UNLOCKED!**\n\n**{achievement}**\nYou've earned this badge!"
-
-async def play_treasure_hunt(user_id: int) -> str:
-    """💎 Treasure Hunt"""
-    treasures = [
-        "💎 Diamond Chest",
-        "👑 Royal Crown",
-        "🏺 Ancient Urn",
-        "🗿 Mysterious Statue",
-        "💰 Gold Stash",
-        "🎁 Mystery Box",
-    ]
-    
-    treasure = random.choice(treasures)
-    return f"💎 **TREASURE HUNT**\n\nYou found: **{treasure}**\nAdventure awaits!"
-
-async def play_escape_room(user_id: int) -> str:
-    """🚪 Escape Room Puzzle"""
-    puzzles = [
-        "🔐 Locked door. Need 3-digit code.",
-        "🧩 Arrange symbols in correct order.",
-        "📖 Decipher the ancient text.",
-        "🔑 Find the hidden key.",
-        "💡 Solve the riddle to escape.",
-    ]
-    
-    puzzle = random.choice(puzzles)
-    return f"🚪 **ESCAPE ROOM**\n\n{puzzle}\n⏱️ Time limit: 2 minutes!"
-
-async def play_roulette_spin(user_id: int) -> str:
-    """🎡 Roulette Spin"""
-    outcomes = [
-        ("🔴 RED", "Winner!"),
-        ("⚫ BLACK", "Winner!"),
-        ("🟢 GREEN", "Jackpot!"),
-    ]
-    
-    color, result = random.choice(outcomes)
-    return f"🎡 **ROULETTE SPIN**\n\n**{color}**\n{result}"
-
-async def play_blackjack_sim(user_id: int) -> str:
-    """♠️ Blackjack Simulator"""
-    your_cards = random.randint(5, 21)
-    dealer_cards = random.randint(5, 21)
-    
-    if your_cards > 21:
-        return f"♠️ **BLACKJACK**\n\nYour hand: {your_cards}\n❌ BUST! Over 21!"
-    elif your_cards == 21:
-        return f"♠️ **BLACKJACK**\n\nYour hand: {your_cards}\n🎉 BLACKJACK!"
-    elif your_cards > dealer_cards:
-        return f"♠️ **BLACKJACK**\n\nYour hand: {your_cards}\nDealer: {dealer_cards}\n✨ WIN!"
-    else:
-        return f"♠️ **BLACKJACK**\n\nYour hand: {your_cards}\nDealer: {dealer_cards}\n❌ LOSE!"
-
-async def play_dice_duel(user_id: int) -> str:
-    """🎲 Dice Duel"""
-    your_roll = random.randint(1, 6)
-    opponent_roll = random.randint(1, 6)
-    
-    if your_roll > opponent_roll:
-        return f"🎲 **DICE DUEL**\n\nYou: {your_roll}\nOpponent: {opponent_roll}\n🏆 YOU WIN!"
-    elif your_roll < opponent_roll:
-        return f"🎲 **DICE DUEL**\n\nYou: {your_roll}\nOpponent: {opponent_roll}\n❌ YOU LOSE!"
-    else:
-        return f"🎲 **DICE DUEL**\n\nYou: {your_roll}\nOpponent: {opponent_roll}\n🤝 TIE!"
-
-async def play_card_guess(user_id: int) -> str:
-    """🃏 Card Guess"""
-    suits = ["♠️ Spades", "♥️ Hearts", "♦️ Diamonds", "♣️ Clubs"]
-    card = random.randint(1, 13)
-    card_names = {1: "Ace", 11: "Jack", 12: "Queen", 13: "King"}
-    card_name = card_names.get(card, str(card))
-    suit = random.choice(suits)
-    
-    return f"🃏 **CARD GUESS**\n\nThe card is: **{card_name} of {suit}**\nGuess correctly for bonus points!"
-
-async def play_color_blind_test(user_id: int) -> str:
-    """🎨 Color Blindness Test"""
-    tests = [
-        "🟢 Find the different shade among greens",
-        "🔵 Identify the blue variation",
-        "🔴 Spot the red outlier",
-    ]
-    
-    test = random.choice(tests)
-    return f"🎨 **COLOR TEST**\n\n{test}\n⏱️ Speed round!"
-
-async def play_visual_memory(user_id: int) -> str:
-    """👁️ Visual Memory Test"""
-    return f"👁️ **VISUAL MEMORY**\n\nRemember this pattern: 🟢🔵🔴🟡🟢🔵\nRepeat it when asked!"
-
-async def play_palindrome_finder(user_id: int) -> str:
-    """🔤 Palindrome Finder"""
-    palindromes = [
-        "RACECAR",
-        "LEVEL",
-        "CIVIC",
-        "KAYAK",
-        "NOON",
-    ]
-    
-    word = random.choice(palindromes)
-    return f"🔤 **PALINDROME FINDER**\n\nIs **{word}** a palindrome?\n(A word that reads same forwards and backwards)"
-
-async def play_alphabet_challenge(user_id: int) -> str:
-    """🔤 Alphabet Speed Challenge"""
-    return f"🔤 **ALPHABET CHALLENGE**\n\nName a word for each letter A-Z as fast as you can!\n⏱️ Time yourself!"
-
-async def play_brain_teaser(user_id: int) -> str:
-    """🧠 Brain Teaser"""
-    teasers = [
-        "A woman shoots her husband, then holds him underwater for 5 minutes. Right after, they go to dinner. How?",
-        "What can run but never walks, has a mouth but never talks, has a head but never weeps?",
-        "I am something people love or hate. I change peoples' appearance and thoughts. If you do not take care of me, I will be ugly. What am I?",
-    ]
-    
-    teaser = random.choice(teasers)
-    return f"🧠 **BRAIN TEASER**\n\n{teaser}"
-
-async def play_shadow_matching(user_id: int) -> str:
-    """🌑 Shadow Matching"""
-    objects = ["🦋", "🐘", "🦁", "🦒", "🐢"]
-    obj = random.choice(objects)
-    
-    return f"🌑 **SHADOW MATCH**\n\nMatch the shadow to: {obj}\n⏱️ Quick reaction needed!"
-
-async def play_sequence_memory(user_id: int) -> str:
-    """🎵 Sequence Memory"""
-    sequence = [random.randint(1, 4) for _ in range(5)]
-    return f"🎵 **SEQUENCE MEMORY**\n\nRemember this: {' '.join([f'[{n}]' for n in sequence])}\nRepeat it back!"
-
-async def play_logic_gates(user_id: int) -> str:
-    """⚙️ Logic Gates"""
-    return f"⚙️ **LOGIC GATES**\n\nIf A=True and B=False\nWhat is A AND B?\n(Answer in boolean)"
-
-async def play_rotation_puzzle(user_id: int) -> str:
-    """🔄 Rotation Puzzle"""
-    return f"🔄 **ROTATION PUZZLE**\n\nRotate the shape correctly!\n⏱️ 3-second timer"
-
-async def play_focus_test(user_id: int) -> str:
-    """👁️ Focus Test"""
-    return f"👁️ **FOCUS TEST**\n\nFollow the moving target 🎯\n⏱️ 30-second duration"
-
-async def play_spot_difference(user_id: int) -> str:
-    """🔍 Spot the Difference"""
-    return f"🔍 **SPOT DIFFERENCE**\n\nFind 5 differences between the images\n⏱️ Time challenge!"
-
-async def play_reflex_trainer(user_id: int) -> str:
-    """⚡ Reflex Trainer"""
-    return f"⚡ **REFLEX TRAINER**\n\nClick as soon as you see the signal!\n⏱️ Best of 5 rounds"
-
-# ============================================================================
-# BUTTON VIEWS & INTERACTIONS
-# ============================================================================
+logger = logging.getLogger("GamingBot")
 
 class SoloGameView(discord.ui.View):
-    """Main button view for creating solo sessions"""
+    """Main solo arcade game grid interface with 50+ games"""
     
-    def __init__(self, bot: commands.Bot) -> None:
+    def __init__(self, user_id: int, channel_id: int, bot):
         super().__init__(timeout=None)
+        self.user_id = user_id
+        self.channel_id = channel_id
         self.bot = bot
     
-    @discord.ui.button(label="🕹️ Create Solo Session", style=discord.ButtonStyle.blurple, custom_id="create_solo_session")
-    async def create_session(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        """Create a new solo arcade session"""
+    async def update_activity(self):
+        """Update last activity timestamp in database"""
         try:
-            await interaction.response.defer(ephemeral=True)
-            
-            user_id = interaction.user.id
-            guild = interaction.guild
-            
-            # Create private channel
-            channel = await guild.create_text_channel(
-                name=f"arcade-{user_id}",
-                overwrites={
-                    guild.default_role: discord.PermissionOverwrite(view=False),
-                    interaction.user: discord.PermissionOverwrite(view=True),
-                    self.bot.user: discord.PermissionOverwrite(send_messages=True, manage_messages=True),
-                }
-            )
-            
-            logger.info(f"✅ Created solo arcade channel: {channel.name} for user {user_id}")
-            
-            # Store channel info in database
-            from main import DatabasePool
-            async with DatabasePool.pool.acquire() as conn:
+            async with self.bot.db_pool.acquire() as conn:
                 await conn.execute(
-                    """
-                    INSERT INTO game_channels (guild_id, channel_id, host_id, lobby_type)
-                    VALUES ($1, $2, $3, $4)
-                    """,
-                    guild.id,
-                    channel.id,
-                    user_id,
-                    "solo"
+                    "UPDATE game_channels SET last_activity = NOW() WHERE channel_id = $1",
+                    self.channel_id
                 )
-            
-            # Send arcade menu
-            embed = discord.Embed(
-                title="🕹️ ELITE SOLO ARCADE TERMINAL",
-                description="**SELECT YOUR GAME**\n\nChoose from 50+ thrilling arcade games. Each button represents a unique challenge!",
-                color=NEON_PURPLE
-            )
-            embed.set_footer(text="Channel auto-deletes when inactive | Pure entertainment gaming")
-            
-            # Create game grid views
-            view1 = ArcadeGamesView1(self.bot, channel.id)
-            view2 = ArcadeGamesView2(self.bot, channel.id)
-            view3 = ArcadeGamesView3(self.bot, channel.id)
-            view4 = ArcadeGamesView4(self.bot, channel.id)
-            view5 = ArcadeGamesView5(self.bot, channel.id)
-            view6 = ArcadeGamesView6(self.bot, channel.id)
-            
-            await channel.send(embed=embed, view=view1)
-            await channel.send(view=view2)
-            await channel.send(view=view3)
-            await channel.send(view=view4)
-            await channel.send(view=view5)
-            await channel.send(view=view6)
-            
-            # Setup auto-cleanup
-            asyncio.create_task(auto_cleanup_channel(self.bot, channel.id, user_id, 900))
-            
-            await interaction.followup.send(
-                f"✅ **Solo Arcade Session Created!**\n\n"
-                f"📍 {channel.mention}\n\n"
-                f"Your private arcade is ready. Pick a game and let's play!",
+        except Exception as e:
+            logger.error(f"❌ Failed to update activity: {e}", exc_info=True)
+    
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Verify only the authorized user can interact"""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "❌ This is not your solo session!",
                 ephemeral=True
             )
-            
-        except Exception as e:
-            logger.error(f"❌ Error creating session: {e}", exc_info=True)
-            await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
-
-
-class ArcadeGamesView1(discord.ui.View):
-    """Arcade games grid - Row 1"""
+            return False
+        return True
     
-    def __init__(self, bot: commands.Bot, channel_id: int) -> None:
-        super().__init__(timeout=None)
-        self.bot = bot
-        self.channel_id = channel_id
-    
-    @discord.ui.button(label="🎲 Dice Roll", style=discord.ButtonStyle.green, custom_id="game_dice_roll")
-    async def dice_roll(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_dice_roll(interaction.user.id)
-        embed = discord.Embed(title="🎲 DICE ROLL", description=result, color=NEON_GREEN)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="🎰 Slots", style=discord.ButtonStyle.green, custom_id="game_slots")
-    async def slots(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_slots(interaction.user.id)
-        embed = discord.Embed(title="🎰 SLOT MACHINE", description=result, color=NEON_ORANGE)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="🧠 Trivia", style=discord.ButtonStyle.green, custom_id="game_trivia")
-    async def trivia(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        question, answer, options = await play_trivia(interaction.user.id)
-        embed = discord.Embed(title="🧠 TRIVIA CHALLENGE", description=f"**Q: {question}**", color=NEON_CYAN)
-        await interaction.response.send_message(embed=embed, view=TriviaView(answer, options), ephemeral=True)
-    
-    @discord.ui.button(label="🌍 Capitals", style=discord.ButtonStyle.green, custom_id="game_capitals")
-    async def capitals(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        flag, capital = await play_capital_guess(interaction.user.id)
-        embed = discord.Embed(title="🌍 CAPITAL GUESSER", description=f"What is the capital of {flag}?", color=NEON_MAGENTA)
-        await interaction.response.send_message(embed=embed, view=CapitalView(capital), ephemeral=True)
-    
-    @discord.ui.button(label="🗺️ Flags", style=discord.ButtonStyle.green, custom_id="game_flags")
-    async def flags(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        flag, country = await play_flag_guess(interaction.user.id)
-        embed = discord.Embed(title="🗺️ FLAG IDENTIFIER", description=f"What country is {flag}?", color=NEON_PURPLE)
-        await interaction.response.send_message(embed=embed, view=FlagView(country), ephemeral=True)
-
-
-class ArcadeGamesView2(discord.ui.View):
-    """Arcade games grid - Row 2"""
-    
-    def __init__(self, bot: commands.Bot, channel_id: int) -> None:
-        super().__init__(timeout=None)
-        self.bot = bot
-        self.channel_id = channel_id
-    
-    @discord.ui.button(label="🧮 Math Mania", style=discord.ButtonStyle.green, custom_id="game_math_mania")
-    async def math_mania(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        question, answer = await play_math_challenge(interaction.user.id)
-        embed = discord.Embed(title="🧮 MATH MANIA", description=f"**{question}**", color=NEON_CYAN)
-        await interaction.response.send_message(embed=embed, view=MathView(answer), ephemeral=True)
-    
-    @discord.ui.button(label="📜 Proverbs", style=discord.ButtonStyle.green, custom_id="game_proverbs")
-    async def proverbs(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        proverb, meaning = await play_proverb_meaning(interaction.user.id)
-        embed = discord.Embed(title="📜 PROVERB MEANING", description=f"What does this mean?\n\n**{proverb}**", color=NEON_ORANGE)
-        await interaction.response.send_message(embed=embed, view=ProverbView(meaning), ephemeral=True)
-    
-    @discord.ui.button(label="✍️ Speed Typer", style=discord.ButtonStyle.green, custom_id="game_speed_typer")
-    async def speed_typer(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        phrase = await play_speed_typer(interaction.user.id)
-        embed = discord.Embed(title="✍️ SPEED TYPER", description=f"Type this as fast as possible:\n\n**{phrase}**", color=NEON_GREEN)
-        embed.set_footer(text="⏱️ Timer starts now!")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="🧩 Unscramble", style=discord.ButtonStyle.green, custom_id="game_unscramble")
-    async def unscramble(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        scrambled, answer = await play_unscramble(interaction.user.id)
-        embed = discord.Embed(title="🧩 UNSCRAMBLE CHALLENGE", description=f"Unscramble: **{scrambled}**", color=NEON_MAGENTA)
-        await interaction.response.send_message(embed=embed, view=UnscrambleView(answer), ephemeral=True)
-
-
-class ArcadeGamesView3(discord.ui.View):
-    """Arcade games grid - Row 3"""
-    
-    def __init__(self, bot: commands.Bot, channel_id: int) -> None:
-        super().__init__(timeout=None)
-        self.bot = bot
-        self.channel_id = channel_id
-    
-    @discord.ui.button(label="🔤 Word Reverse", style=discord.ButtonStyle.green, custom_id="game_word_reverse")
-    async def word_reverse(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        word, reversed_word = await play_word_reverse(interaction.user.id)
-        embed = discord.Embed(title="🔤 WORD REVERSE", description=f"What's the reverse of **{word}**?", color=NEON_CYAN)
-        await interaction.response.send_message(embed=embed, view=WordReverseView(reversed_word), ephemeral=True)
-    
-    @discord.ui.button(label="🎣 Cyber Fishing", style=discord.ButtonStyle.green, custom_id="game_cyber_fishing")
-    async def cyber_fishing(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_cyber_fishing(interaction.user.id)
-        embed = discord.Embed(title="🎣 CYBER FISHING", description=result, color=NEON_PURPLE)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="⛏️ Mining Sim", style=discord.ButtonStyle.green, custom_id="game_mining_sim")
-    async def mining_sim(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_mining_sim(interaction.user.id)
-        embed = discord.Embed(title="⛏️ MINING SIMULATOR", description=result, color=NEON_ORANGE)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="🪙 Coin Flip", style=discord.ButtonStyle.green, custom_id="game_coin_flip")
-    async def coin_flip(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_coin_flip(interaction.user.id)
-        embed = discord.Embed(title="🪙 COIN FLIP", description=f"**{result}**", color=NEON_GREEN)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="📈 Higher/Lower", style=discord.ButtonStyle.green, custom_id="game_higher_lower")
-    async def higher_lower(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        card, card_name = await play_higher_lower(interaction.user.id)
-        embed = discord.Embed(title="📈 HIGHER OR LOWER", description=f"Your card: **{card_name}**\n\nNext card higher or lower?", color=NEON_MAGENTA)
-        await interaction.response.send_message(embed=embed, view=HigherLowerView(card), ephemeral=True)
-
-
-class ArcadeGamesView4(discord.ui.View):
-    """Arcade games grid - Row 4"""
-    
-    def __init__(self, bot: commands.Bot, channel_id: int) -> None:
-        super().__init__(timeout=None)
-        self.bot = bot
-        self.channel_id = channel_id
-    
-    @discord.ui.button(label="✂️ RPS", style=discord.ButtonStyle.green, custom_id="game_rps")
-    async def rock_paper_scissors(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        bot_choice = await play_rock_paper_scissors(interaction.user.id)
-        embed = discord.Embed(title="✂️ ROCK PAPER SCISSORS", description="Make your choice!", color=NEON_CYAN)
-        await interaction.response.send_message(embed=embed, view=RPSView(bot_choice), ephemeral=True)
-    
-    @discord.ui.button(label="🎯 Number Guess", style=discord.ButtonStyle.green, custom_id="game_number_guess")
-    async def number_guess(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        secret = await play_number_guess(interaction.user.id)
-        embed = discord.Embed(title="🎯 NUMBER GUESS", description="I'm thinking of a number 1-100.\n\nGuess it!", color=NEON_GREEN)
-        await interaction.response.send_message(embed=embed, view=NumberGuessView(secret), ephemeral=True)
-    
-    @discord.ui.button(label="🎡 Spin Wheel", style=discord.ButtonStyle.green, custom_id="game_spin_wheel")
-    async def spin_wheel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_spin_wheel(interaction.user.id)
-        embed = discord.Embed(title="🎡 SPIN THE WHEEL", description=result, color=NEON_ORANGE)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="🧠 Memory Tiles", style=discord.ButtonStyle.green, custom_id="game_memory_tiles")
-    async def memory_tiles(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_memory_tiles(interaction.user.id)
-        embed = discord.Embed(title="🧠 MEMORY TILES", description=result, color=NEON_PURPLE)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="🎭 Riddle", style=discord.ButtonStyle.green, custom_id="game_riddle")
-    async def riddle(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        riddle, answer = await play_riddle_solver(interaction.user.id)
-        embed = discord.Embed(title="🎭 RIDDLE SOLVER", description=f"**{riddle}**", color=NEON_MAGENTA)
-        await interaction.response.send_message(embed=embed, view=RiddleView(answer), ephemeral=True)
-
-
-class ArcadeGamesView5(discord.ui.View):
-    """Arcade games grid - Row 5"""
-    
-    def __init__(self, bot: commands.Bot, channel_id: int) -> None:
-        super().__init__(timeout=None)
-        self.bot = bot
-        self.channel_id = channel_id
-    
-    @discord.ui.button(label="🎨 Color Match", style=discord.ButtonStyle.green, custom_id="game_color_match")
-    async def color_match(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_color_match(interaction.user.id)
-        embed = discord.Embed(title="🎨 COLOR MATCH", description=result, color=NEON_CYAN)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="⚡ Math Sprint", style=discord.ButtonStyle.green, custom_id="game_math_sprint")
-    async def math_sprint(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        question, answer = await play_fast_math_sprint(interaction.user.id)
-        embed = discord.Embed(title="⚡ FAST MATH SPRINT", description=question, color=NEON_GREEN)
-        await interaction.response.send_message(embed=embed, view=MathSprintView(answer), ephemeral=True)
-    
-    @discord.ui.button(label="🎭 Emoji Puzzle", style=discord.ButtonStyle.green, custom_id="game_emoji_puzzle")
-    async def emoji_puzzle(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_emoji_puzzle(interaction.user.id)
-        embed = discord.Embed(title="🎭 EMOJI PUZZLE", description=result, color=NEON_ORANGE)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="🔤 Anagram", style=discord.ButtonStyle.green, custom_id="game_anagram")
-    async def anagram(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_anagram_solver(interaction.user.id)
-        embed = discord.Embed(title="🔤 ANAGRAM SOLVER", description=result, color=NEON_PURPLE)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="🔮 Symbol Match", style=discord.ButtonStyle.green, custom_id="game_symbol_match")
-    async def symbol_match(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_symbol_match(interaction.user.id)
-        embed = discord.Embed(title="🔮 SYMBOL MATCHING", description=result, color=NEON_MAGENTA)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-
-class ArcadeGamesView6(discord.ui.View):
-    """Arcade games grid - Row 6"""
-    
-    def __init__(self, bot: commands.Bot, channel_id: int) -> None:
-        super().__init__(timeout=None)
-        self.bot = bot
-        self.channel_id = channel_id
-    
-    @discord.ui.button(label="⚡ Quick Reaction", style=discord.ButtonStyle.green, custom_id="game_quick_reaction")
-    async def quick_reaction(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_quick_reaction(interaction.user.id)
-        embed = discord.Embed(title="⚡ QUICK REACTION", description=result, color=NEON_CYAN)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="🔗 Word Chain", style=discord.ButtonStyle.green, custom_id="game_word_chain")
-    async def word_chain(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_word_chain(interaction.user.id)
-        embed = discord.Embed(title="🔗 WORD CHAIN", description=result, color=NEON_GREEN)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="📊 Pattern Finder", style=discord.ButtonStyle.green, custom_id="game_pattern_finder")
-    async def pattern_finder(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_pattern_finder(interaction.user.id)
-        embed = discord.Embed(title="📊 PATTERN FINDER", description=result, color=NEON_ORANGE)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="🍀 Lucky Number", style=discord.ButtonStyle.green, custom_id="game_lucky_number")
-    async def lucky_number(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_lucky_number(interaction.user.id)
-        embed = discord.Embed(title="🍀 LUCKY NUMBER DRAW", description=result, color=NEON_PURPLE)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="🏆 Achievement", style=discord.ButtonStyle.green, custom_id="game_achievement")
-    async def achievement(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_achievement_unlocked(interaction.user.id)
-        embed = discord.Embed(title="🏆 ACHIEVEMENT", description=result, color=NEON_MAGENTA)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="💎 Treasure Hunt", style=discord.ButtonStyle.green, custom_id="game_treasure_hunt")
-    async def treasure_hunt(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_treasure_hunt(interaction.user.id)
-        embed = discord.Embed(title="💎 TREASURE HUNT", description=result, color=NEON_CYAN)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="🚪 Escape Room", style=discord.ButtonStyle.green, custom_id="game_escape_room")
-    async def escape_room(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_escape_room(interaction.user.id)
-        embed = discord.Embed(title="🚪 ESCAPE ROOM", description=result, color=NEON_GREEN)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="🎡 Roulette", style=discord.ButtonStyle.green, custom_id="game_roulette")
-    async def roulette(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_roulette_spin(interaction.user.id)
-        embed = discord.Embed(title="🎡 ROULETTE SPIN", description=result, color=NEON_ORANGE)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="♠️ Blackjack", style=discord.ButtonStyle.green, custom_id="game_blackjack")
-    async def blackjack(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_blackjack_sim(interaction.user.id)
-        embed = discord.Embed(title="♠️ BLACKJACK", description=result, color=NEON_PURPLE)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="🎲 Dice Duel", style=discord.ButtonStyle.green, custom_id="game_dice_duel")
-    async def dice_duel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_dice_duel(interaction.user.id)
-        embed = discord.Embed(title="🎲 DICE DUEL", description=result, color=NEON_MAGENTA)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @discord.ui.button(label="🃏 Card Guess", style=discord.ButtonStyle.green, custom_id="game_card_guess")
-    async def card_guess(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        result = await play_card_guess(interaction.user.id)
-        embed = discord.Embed(title="🃏 CARD GUESS", description=result, color=NEON_CYAN)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-# ============================================================================
-# MINI GAME ANSWER VIEWS (For interactive games with choices)
-# ============================================================================
-
-class TriviaView(discord.ui.View):
-    """Trivia answer selection view"""
-    
-    def __init__(self, correct_answer: str, options: List[str]) -> None:
-        super().__init__(timeout=30)
-        self.correct_answer = correct_answer
-        self.answered = False
+    @discord.ui.button(label="🎲 Dice Roll", style=discord.ButtonStyle.primary, custom_id="solo_dice_roll")
+    async def dice_roll(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Classic dice roll game"""
+        await interaction.response.defer()
+        await self.update_activity()
         
-        for option in options:
-            self.add_item(TriviaButton(option, correct_answer))
-
-class TriviaButton(discord.ui.Button):
-    def __init__(self, option: str, correct_answer: str):
-        super().__init__(label=option, style=discord.ButtonStyle.primary, custom_id=f"trivia_{option}")
-        self.option = option
-        self.correct_answer = correct_answer
-    
-    async def callback(self, interaction: discord.Interaction) -> None:
-        if self.option == self.correct_answer:
-            await interaction.response.send_message("✅ **CORRECT!**", ephemeral=True)
+        result = random.randint(1, 6)
+        outcome_emoji = ["⚪", "⚫", "🔴", "🟡", "🟢", "🔵"][result - 1]
+        
+        embed = discord.Embed(
+            title="🎲 DICE ROLL RESULTS",
+            description=f"{outcome_emoji} You rolled a **{result}**!",
+            color=0x00D9FF
+        )
+        embed.add_field(name="Outcome", value=f"Roll: {result}/6", inline=False)
+        
+        if result >= 5:
+            embed.add_field(name="🎉 Status", value="Lucky roll!", inline=False)
+        elif result == 1:
+            embed.add_field(name="😢 Status", value="Better luck next time!", inline=False)
         else:
-            await interaction.response.send_message(f"❌ Wrong! The answer was **{self.correct_answer}**", ephemeral=True)
-
-class CapitalView(discord.ui.View):
-    """Capital guessing view"""
+            embed.add_field(name="➡️ Status", value="Average roll", inline=False)
+        
+        await interaction.followup.send(embed=embed)
     
-    def __init__(self, correct_capital: str) -> None:
-        super().__init__(timeout=60)
-        self.correct_capital = correct_capital
-
-class FlagView(discord.ui.View):
-    """Flag identification view"""
-    
-    def __init__(self, correct_country: str) -> None:
-        super().__init__(timeout=60)
-        self.correct_country = correct_country
-
-class MathView(discord.ui.View):
-    """Math problem view"""
-    
-    def __init__(self, correct_answer: int) -> None:
-        super().__init__(timeout=30)
-        self.correct_answer = correct_answer
-
-class ProverbView(discord.ui.View):
-    """Proverb meaning view"""
-    
-    def __init__(self, correct_meaning: str) -> None:
-        super().__init__(timeout=60)
-        self.correct_meaning = correct_meaning
-
-class UnscrambleView(discord.ui.View):
-    """Unscramble word view"""
-    
-    def __init__(self, correct_answer: str) -> None:
-        super().__init__(timeout=60)
-        self.correct_answer = correct_answer
-
-class WordReverseView(discord.ui.View):
-    """Word reverse view"""
-    
-    def __init__(self, reversed_word: str) -> None:
-        super().__init__(timeout=30)
-        self.reversed_word = reversed_word
-
-class HigherLowerView(discord.ui.View):
-    """Higher or lower card game view"""
-    
-    def __init__(self, current_card: int) -> None:
-        super().__init__(timeout=60)
-        self.current_card = current_card
-    
-    @discord.ui.button(label="📈 Higher", style=discord.ButtonStyle.green, custom_id="higher")
-    async def higher(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        next_card = random.randint(1, 13)
-        if next_card > self.current_card:
-            await interaction.response.send_message("✅ **CORRECT! Higher!**", ephemeral=True)
+    @discord.ui.button(label="🎰 Slots", style=discord.ButtonStyle.primary, custom_id="solo_slots")
+    async def slots(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Slot machine game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        symbols = ["🍒", "🍋", "🍊", "🍇", "💎", "👑", "🎯", "⭐"]
+        spin1 = random.choice(symbols)
+        spin2 = random.choice(symbols)
+        spin3 = random.choice(symbols)
+        
+        is_winner = spin1 == spin2 == spin3
+        
+        embed = discord.Embed(
+            title="🎰 SLOT MACHINE",
+            description=f"```\n   {spin1}  {spin2}  {spin3}\n```",
+            color=0xFF1493
+        )
+        
+        if is_winner:
+            embed.add_field(name="🎉 JACKPOT!", value=f"All three match! {spin1} {spin1} {spin1}", inline=False)
         else:
-            await interaction.response.send_message(f"❌ **Wrong!** The card was {next_card}", ephemeral=True)
+            embed.add_field(name="🎲 Result", value="No match - try again!", inline=False)
+        
+        await interaction.followup.send(embed=embed)
     
-    @discord.ui.button(label="📉 Lower", style=discord.ButtonStyle.red, custom_id="lower")
-    async def lower(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        next_card = random.randint(1, 13)
-        if next_card < self.current_card:
-            await interaction.response.send_message("✅ **CORRECT! Lower!**", ephemeral=True)
+    @discord.ui.button(label="🪙 Coin Flip", style=discord.ButtonStyle.primary, custom_id="solo_coin_flip")
+    async def coin_flip(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Coin flip game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        result = random.choice(["Heads", "Tails"])
+        result_emoji = "🟡" if result == "Heads" else "⚫"
+        
+        embed = discord.Embed(
+            title="🪙 COIN FLIP",
+            description=f"{result_emoji} **{result}**!",
+            color=0xFFD700
+        )
+        embed.add_field(name="Result", value=result, inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="🎡 Spin Wheel", style=discord.ButtonStyle.primary, custom_id="solo_spin_wheel")
+    async def spin_wheel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Spin wheel game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        options = ["🔴 Red", "🟣 Purple", "🟢 Green", "🟡 Yellow", "🔵 Blue", "⚪ White"]
+        result = random.choice(options)
+        
+        embed = discord.Embed(
+            title="🎡 SPIN THE WHEEL",
+            description=f"The wheel landed on: **{result}**",
+            color=0x00D9FF
+        )
+        embed.add_field(name="Lucky Color", value=result, inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="🎡 Roulette", style=discord.ButtonStyle.primary, custom_id="solo_roulette")
+    async def roulette(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Roulette game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        number = random.randint(0, 36)
+        color = "🔴 Red" if number % 2 == 1 else "⚫ Black"
+        if number == 0:
+            color = "🟢 Green"
+        
+        embed = discord.Embed(
+            title="🎡 ROULETTE SPIN",
+            description=f"Number: **{number}** - {color}",
+            color=0xFF1493
+        )
+        embed.add_field(name="Result", value=f"Landed on {number}", inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="✂️ RPS", style=discord.ButtonStyle.primary, custom_id="solo_rps")
+    async def rock_paper_scissors(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Rock Paper Scissors game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        choices = ["Rock", "Paper", "Scissors"]
+        bot_choice = random.choice(choices)
+        
+        view = RPSChoiceView(bot_choice)
+        embed = discord.Embed(
+            title="✂️ ROCK PAPER SCISSORS",
+            description="Choose your move!",
+            color=0x00D9FF
+        )
+        
+        await interaction.followup.send(embed=embed, view=view)
+    
+    @discord.ui.button(label="🧠 Trivia", style=discord.ButtonStyle.success, custom_id="solo_trivia")
+    async def trivia(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Trivia challenge game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        trivia_questions = [
+            {"question": "What is the capital of France?", "correct": "Paris", "options": ["Paris", "Lyon", "Marseille"]},
+            {"question": "What is 2 + 2?", "correct": "4", "options": ["3", "4", "5"]},
+            {"question": "What is the largest planet?", "correct": "Jupiter", "options": ["Mars", "Jupiter", "Saturn"]},
+            {"question": "Who wrote Hamlet?", "correct": "Shakespeare", "options": ["Marlowe", "Shakespeare", "Jonson"]},
+            {"question": "What is the smallest prime number?", "correct": "2", "options": ["1", "2", "3"]},
+        ]
+        
+        q = random.choice(trivia_questions)
+        random.shuffle(q["options"])
+        
+        view = TriviaView(q["correct"])
+        embed = discord.Embed(
+            title="🧠 TRIVIA CHALLENGE",
+            description=q["question"],
+            color=0x00D9FF
+        )
+        
+        for idx, option in enumerate(q["options"], 1):
+            embed.add_field(name=f"Option {idx}", value=option, inline=False)
+        
+        await interaction.followup.send(embed=embed, view=view)
+    
+    @discord.ui.button(label="🌍 Capitals", style=discord.ButtonStyle.success, custom_id="solo_capitals")
+    async def capitals(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Capital guesser game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        capitals = {
+            "France": "Paris",
+            "Germany": "Berlin",
+            "Spain": "Madrid",
+            "Italy": "Rome",
+            "Japan": "Tokyo",
+            "Brazil": "Brasília",
+            "Canada": "Ottawa",
+            "Australia": "Canberra",
+            "Egypt": "Cairo",
+            "India": "New Delhi",
+        }
+        
+        country = random.choice(list(capitals.keys()))
+        correct_answer = capitals[country]
+        wrong_answers = [v for k, v in capitals.items() if k != country]
+        options = [correct_answer] + random.sample(wrong_answers, 2)
+        random.shuffle(options)
+        
+        view = CapitalsView(correct_answer, country)
+        embed = discord.Embed(
+            title="🌍 CAPITAL GUESSER",
+            description=f"What is the capital of **{country}**?",
+            color=0x00D9FF
+        )
+        
+        for idx, option in enumerate(options, 1):
+            embed.add_field(name=f"Option {idx}", value=option, inline=False)
+        
+        await interaction.followup.send(embed=embed, view=view)
+    
+    @discord.ui.button(label="🗺️ Flags", style=discord.ButtonStyle.success, custom_id="solo_flags")
+    async def flags(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Flag identifier game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        flags = {
+            "🇫🇷": "France",
+            "🇬🇧": "United Kingdom",
+            "🇩🇪": "Germany",
+            "🇪🇸": "Spain",
+            "🇮🇹": "Italy",
+            "🇯🇵": "Japan",
+            "🇧🇷": "Brazil",
+            "🇨🇦": "Canada",
+            "🇦🇺": "Australia",
+            "🇿🇦": "South Africa",
+        }
+        
+        flag = random.choice(list(flags.keys()))
+        correct_answer = flags[flag]
+        wrong_answers = [v for k, v in flags.items() if k != flag]
+        options = [correct_answer] + random.sample(wrong_answers, 2)
+        random.shuffle(options)
+        
+        view = FlagsView(correct_answer, flag)
+        embed = discord.Embed(
+            title="🗺️ FLAG IDENTIFIER",
+            description=f"What country is this flag? {flag}",
+            color=0x00D9FF
+        )
+        
+        for idx, option in enumerate(options, 1):
+            embed.add_field(name=f"Option {idx}", value=option, inline=False)
+        
+        await interaction.followup.send(embed=embed, view=view)
+    
+    @discord.ui.button(label="🧮 Math Mania", style=discord.ButtonStyle.success, custom_id="solo_math")
+    async def math_mania(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Math challenge game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        num1 = random.randint(1, 100)
+        num2 = random.randint(1, 100)
+        operations = ["+", "-", "*"]
+        op = random.choice(operations)
+        
+        if op == "+":
+            answer = num1 + num2
+        elif op == "-":
+            answer = num1 - num2
         else:
-            await interaction.response.send_message(f"❌ **Wrong!** The card was {next_card}", ephemeral=True)
-
-class RPSView(discord.ui.View):
-    """Rock Paper Scissors view"""
+            answer = num1 * num2
+        
+        wrong1 = answer + random.randint(1, 10)
+        wrong2 = answer - random.randint(1, 10)
+        options = [str(answer), str(wrong1), str(wrong2)]
+        random.shuffle(options)
+        
+        view = MathView(str(answer))
+        embed = discord.Embed(
+            title="🧮 MATH MANIA",
+            description=f"**{num1} {op} {num2} = ?**",
+            color=0x00D9FF
+        )
+        
+        for idx, option in enumerate(options, 1):
+            embed.add_field(name=f"Option {idx}", value=option, inline=False)
+        
+        await interaction.followup.send(embed=embed, view=view)
     
-    def __init__(self, bot_choice: str) -> None:
-        super().__init__(timeout=30)
+    @discord.ui.button(label="📜 Proverbs", style=discord.ButtonStyle.success, custom_id="solo_proverbs")
+    async def proverbs(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Proverb meaning game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        proverbs = {
+            "A bird in the hand is worth two in the bush": "It's better to have something certain than to risk it for something better",
+            "Actions speak louder than words": "What you do is more important than what you say",
+            "Better late than never": "It's better to do something late than not do it at all",
+            "Don't cry over spilled milk": "Don't waste energy on things you can't change",
+            "Practice makes perfect": "Regular training improves your skills",
+        }
+        
+        proverb = random.choice(list(proverbs.keys()))
+        correct_meaning = proverbs[proverb]
+        
+        wrong_meanings = [v for k, v in proverbs.items() if k != proverb]
+        options = [correct_meaning] + random.sample(wrong_meanings, 2)
+        random.shuffle(options)
+        
+        view = ProverbsView(correct_meaning, proverb)
+        embed = discord.Embed(
+            title="📜 PROVERB MEANING",
+            description=f"**\"{proverb}\"**\n\nWhat does this mean?",
+            color=0x00D9FF
+        )
+        
+        for idx, option in enumerate(options, 1):
+            embed.add_field(name=f"Option {idx}", value=option, inline=True)
+        
+        await interaction.followup.send(embed=embed, view=view)
+    
+    @discord.ui.button(label="🔤 Anagrams", style=discord.ButtonStyle.success, custom_id="solo_anagrams")
+    async def anagrams(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Anagram solver game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        words = ["GAMING", "DISCORD", "PYTHON", "AMAZING", "BUTTERFLY", "MOUNTAIN"]
+        correct_word = random.choice(words)
+        scrambled = "".join(random.sample(list(correct_word), len(correct_word)))
+        
+        other_words = [w for w in words if w != correct_word]
+        options = [correct_word] + random.sample(other_words, 2)
+        random.shuffle(options)
+        
+        view = AnagramsView(correct_word, scrambled)
+        embed = discord.Embed(
+            title="🔤 ANAGRAM SOLVER",
+            description=f"Unscramble: **{scrambled}**",
+            color=0x00D9FF
+        )
+        
+        for idx, option in enumerate(options, 1):
+            embed.add_field(name=f"Option {idx}", value=option, inline=False)
+        
+        await interaction.followup.send(embed=embed, view=view)
+    
+    @discord.ui.button(label="🔤 Reverse", style=discord.ButtonStyle.success, custom_id="solo_reverse")
+    async def word_reverse(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Word reverse game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        words = ["GAMING", "DISCORD", "PYTHON", "HELLO", "WORLD", "AMAZING"]
+        correct_word = random.choice(words)
+        reversed_word = correct_word[::-1]
+        
+        embed = discord.Embed(
+            title="🔤 WORD REVERSE",
+            description=f"Reverse this word: **{reversed_word}**\n\nYour answer: **{correct_word}**",
+            color=0x00D9FF
+        )
+        embed.add_field(name="✅ Answer", value=correct_word, inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="🔤 Palindrome", style=discord.ButtonStyle.success, custom_id="solo_palindrome")
+    async def palindrome(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Palindrome finder game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        palindromes = ["RACECAR", "LEVEL", "NOON", "RADAR", "KAYAK", "CIVIC"]
+        non_palindromes = ["GAMING", "PYTHON", "HELLO", "WORLD", "DISCORD"]
+        
+        word = random.choice(palindromes + non_palindromes)
+        is_palindrome = word in palindromes
+        
+        embed = discord.Embed(
+            title="🔤 PALINDROME FINDER",
+            description=f"Is **{word}** a palindrome?\n\n**Answer: {'YES ✅' if is_palindrome else 'NO ❌'}**",
+            color=0x00D9FF
+        )
+        embed.add_field(name="Definition", value="A palindrome reads the same forwards and backwards", inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="📊 Patterns", style=discord.ButtonStyle.success, custom_id="solo_patterns")
+    async def pattern_finder(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Pattern finder game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        patterns = [
+            {"series": "2, 4, 6, 8, ?", "answer": "10", "type": "Even numbers"},
+            {"series": "1, 1, 2, 3, 5, 8, ?", "answer": "13", "type": "Fibonacci"},
+            {"series": "100, 90, 80, 70, ?", "answer": "60", "type": "Decreasing by 10"},
+            {"series": "1, 4, 9, 16, 25, ?", "answer": "36", "type": "Perfect squares"},
+            {"series": "3, 6, 12, 24, ?", "answer": "48", "type": "Doubling"},
+        ]
+        
+        pattern = random.choice(patterns)
+        options = [pattern["answer"], str(int(pattern["answer"]) + 5), str(int(pattern["answer"]) - 5)]
+        random.shuffle(options)
+        
+        view = PatternView(pattern["answer"], pattern["type"])
+        embed = discord.Embed(
+            title="📊 PATTERN FINDER",
+            description=f"What's next? **{pattern['series']}**",
+            color=0x00D9FF
+        )
+        
+        for idx, option in enumerate(options, 1):
+            embed.add_field(name=f"Option {idx}", value=option, inline=False)
+        
+        await interaction.followup.send(embed=embed, view=view)
+    
+    @discord.ui.button(label="⚡ Alphabet", style=discord.ButtonStyle.success, custom_id="solo_alphabet")
+    async def alphabet_speed(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Alphabet speed challenge"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        start_letter = random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        position = ord(start_letter) - ord("A") + 1
+        
+        embed = discord.Embed(
+            title="⚡ ALPHABET SPEED CHALLENGE",
+            description=f"**{start_letter}** is the **{position}th** letter of the alphabet",
+            color=0x00D9FF
+        )
+        embed.add_field(name="Position", value=f"{position}/26", inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="🧭 Brain Teaser", style=discord.ButtonStyle.success, custom_id="solo_teaser")
+    async def brain_teaser(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Brain teaser game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        teasers = [
+            {"q": "I have cities, but no houses. I have mountains, but no trees. What am I?", "a": "A map"},
+            {"q": "What has a head and a tail, but no body?", "a": "A coin"},
+            {"q": "I speak without a mouth and hear without ears. What am I?", "a": "An echo"},
+            {"q": "What can run but never walks?", "a": "Water"},
+            {"q": "What has keys but no locks?", "a": "A piano"},
+        ]
+        
+        teaser = random.choice(teasers)
+        
+        embed = discord.Embed(
+            title="🧭 BRAIN TEASER",
+            description=teaser["q"],
+            color=0x00D9FF
+        )
+        embed.add_field(name="Answer", value=f"||{teaser['a']}||", inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="🔤 Unscramble", style=discord.ButtonStyle.success, custom_id="solo_unscramble")
+    async def unscramble(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Word unscramble game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        words_dict = {
+            "NOHTYP": "PYTHON",
+            "GNGAMII": "GAMING",
+            "TCIDDORS": "DISCORD",
+            "LOHEL": "HELLO",
+            "WROLD": "WORLD",
+        }
+        
+        scrambled = random.choice(list(words_dict.keys()))
+        correct = words_dict[scrambled]
+        
+        embed = discord.Embed(
+            title="🔤 UNSCRAMBLE",
+            description=f"Unscramble: **{scrambled}**",
+            color=0x00D9FF
+        )
+        embed.add_field(name="Answer", value=f"||{correct}||", inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="🔗 Word Chain", style=discord.ButtonStyle.success, custom_id="solo_wordchain")
+    async def word_chain(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Word chain game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        chains = [
+            {"start": "CAT", "next": "TIGER", "hint": "Both are felines"},
+            {"start": "BOOK", "next": "AUTHOR", "hint": "Related to writing"},
+            {"start": "MOON", "next": "STAR", "hint": "Both are celestial"},
+            {"start": "FIRE", "next": "WATER", "hint": "Opposites in nature"},
+        ]
+        
+        chain = random.choice(chains)
+        
+        embed = discord.Embed(
+            title="🔗 WORD CHAIN",
+            description=f"**{chain['start']}** → **?** → ... \n\nHint: {chain['hint']}",
+            color=0x00D9FF
+        )
+        embed.add_field(name="Next Word", value=f"||{chain['next']}||", inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="🎣 Fishing", style=discord.ButtonStyle.danger, custom_id="solo_fishing")
+    async def cyber_fishing(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Cyber fishing simulator"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        fish_types = ["🐠 Common Fish", "🐟 Rare Fish", "🦈 Shark", "🐙 Octopus", "🦑 Squid", "🐡 Pufferfish"]
+        caught_fish = random.choice(fish_types)
+        weight = random.randint(1, 50)
+        
+        embed = discord.Embed(
+            title="🎣 CYBER FISHING SIMULATOR",
+            description=f"You cast your line...",
+            color=0x00D9FF
+        )
+        embed.add_field(name="Caught!", value=caught_fish, inline=False)
+        embed.add_field(name="Weight", value=f"{weight} lbs", inline=False)
+        
+        if weight > 40:
+            embed.add_field(name="🏆 Size", value="LEGENDARY CATCH!", inline=False)
+        elif weight > 25:
+            embed.add_field(name="⭐ Size", value="Great catch!", inline=False)
+        else:
+            embed.add_field(name="Size", value="Good catch!", inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="⛏️ Mining", style=discord.ButtonStyle.danger, custom_id="solo_mining")
+    async def cyber_mining(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Cyber mining simulator"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        ores = ["💎 Diamond", "🥇 Gold", "🥈 Silver", "🪨 Stone", "⚒️ Iron", "🟫 Coal"]
+        mined_ore = random.choice(ores)
+        amount = random.randint(1, 100)
+        
+        embed = discord.Embed(
+            title="⛏️ CYBER MINING SIMULATOR",
+            description="You swing your pickaxe...",
+            color=0x00D9FF
+        )
+        embed.add_field(name="Mined", value=mined_ore, inline=False)
+        embed.add_field(name="Amount", value=f"{amount} units", inline=False)
+        
+        if amount > 80:
+            embed.add_field(name="🎉 Quality", value="PREMIUM YIELD!", inline=False)
+        elif amount > 50:
+            embed.add_field(name="Quality", value="Good yield!", inline=False)
+        else:
+            embed.add_field(name="Quality", value="Small yield", inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="🧠 Memory", style=discord.ButtonStyle.danger, custom_id="solo_memory")
+    async def memory_tiles(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Memory tiles game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        tiles = ["🟨", "🟩", "🟦", "🟪", "🟥", "🟧"]
+        sequence = random.sample(tiles, 3)
+        
+        embed = discord.Embed(
+            title="🧠 MEMORY TILES",
+            description=f"Memorize: **{' '.join(sequence)}**\n\nSequence will be hidden in 3 seconds...",
+            color=0x00D9FF
+        )
+        
+        await interaction.followup.send(embed=embed)
+        
+        await asyncio.sleep(3)
+        
+        hidden_embed = discord.Embed(
+            title="🧠 MEMORY TILES",
+            description="What was the sequence?",
+            color=0x00D9FF
+        )
+        
+        await interaction.channel.send(embed=hidden_embed)
+    
+    @discord.ui.button(label="🎨 Color Match", style=discord.ButtonStyle.danger, custom_id="solo_colormatch")
+    async def color_match(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Color matching game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        colors = {
+            "🔴 Red": "❤️",
+            "🔵 Blue": "💙",
+            "🟢 Green": "💚",
+            "🟡 Yellow": "💛",
+            "🟣 Purple": "💜",
+            "🟤 Brown": "🤎"
+        }
+        
+        color_name = random.choice(list(colors.keys()))
+        correct_emoji = colors[color_name]
+        wrong_emojis = [v for k, v in colors.items() if k != color_name]
+        options = [correct_emoji] + random.sample(wrong_emojis, 2)
+        random.shuffle(options)
+        
+        view = ColorMatchView(correct_emoji, color_name)
+        embed = discord.Embed(
+            title="🎨 COLOR MATCH",
+            description=f"Match the color: **{color_name}**",
+            color=0x00D9FF
+        )
+        
+        for idx, option in enumerate(options, 1):
+            embed.add_field(name=f"Option {idx}", value=option, inline=False)
+        
+        await interaction.followup.send(embed=embed, view=view)
+    
+    @discord.ui.button(label="⚡ Reaction", style=discord.ButtonStyle.danger, custom_id="solo_reaction")
+    async def quick_reaction(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Quick reaction test"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        embed = discord.Embed(
+            title="⚡ QUICK REACTION TEST",
+            description="Get ready!",
+            color=0x00D9FF
+        )
+        
+        await interaction.followup.send(embed=embed)
+        
+        await asyncio.sleep(random.randint(2, 5))
+        
+        reaction_embed = discord.Embed(
+            title="⚡ CLICK NOW!",
+            description="How fast can you react?",
+            color=0xFF1493
+        )
+        
+        await interaction.channel.send(embed=reaction_embed)
+    
+    @discord.ui.button(label="🌑 Shadows", style=discord.ButtonStyle.danger, custom_id="solo_shadows")
+    async def shadow_matching(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Shadow matching game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        objects = ["🎲", "🎯", "🎪", "🎭", "🎬", "🎤"]
+        correct_object = random.choice(objects)
+        wrong_objects = [o for o in objects if o != correct_object]
+        options = [correct_object] + random.sample(wrong_objects, 2)
+        random.shuffle(options)
+        
+        view = ShadowView(correct_object)
+        embed = discord.Embed(
+            title="🌑 SHADOW MATCHING",
+            description=f"Which object matches this shadow? **?**",
+            color=0x00D9FF
+        )
+        
+        for idx, option in enumerate(options, 1):
+            embed.add_field(name=f"Option {idx}", value=option, inline=False)
+        
+        await interaction.followup.send(embed=embed, view=view)
+    
+    @discord.ui.button(label="🎵 Sequence", style=discord.ButtonStyle.danger, custom_id="solo_sequence")
+    async def sequence_memory(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Sequence memory game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        notes = ["🎵", "🎶", "🎼", "🎹", "🎸"]
+        sequence = random.choices(notes, k=4)
+        
+        embed = discord.Embed(
+            title="🎵 SEQUENCE MEMORY",
+            description=f"Remember: **{' '.join(sequence)}**",
+            color=0x00D9FF
+        )
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="⚙️ Logic Gates", style=discord.ButtonStyle.danger, custom_id="solo_logic")
+    async def logic_gates(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Logic gates puzzle"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        gates = [
+            {"problem": "If A=1 and B=0, what is A AND B?", "answer": "0"},
+            {"problem": "If A=1 and B=0, what is A OR B?", "answer": "1"},
+            {"problem": "If A=1, what is NOT A?", "answer": "0"},
+            {"problem": "If A=0 and B=0, what is A AND B?", "answer": "0"},
+        ]
+        
+        gate = random.choice(gates)
+        
+        embed = discord.Embed(
+            title="⚙️ LOGIC GATES",
+            description=gate["problem"],
+            color=0x00D9FF
+        )
+        embed.add_field(name="Answer", value=f"||{gate['answer']}||", inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="🔄 Rotation", style=discord.ButtonStyle.danger, custom_id="solo_rotation")
+    async def rotation_puzzle(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Rotation puzzle game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        rotations = ["0°", "90°", "180°", "270°"]
+        correct = random.choice(rotations)
+        
+        embed = discord.Embed(
+            title="🔄 ROTATION PUZZLE",
+            description=f"Rotate 🎯 clockwise 90°. Result: **{correct}**",
+            color=0x00D9FF
+        )
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="👁️ Focus", style=discord.ButtonStyle.danger, custom_id="solo_focus")
+    async def focus_test(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Focus test game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        embed = discord.Embed(
+            title="👁️ FOCUS TEST",
+            description="Count the circles in your mind for 10 seconds:\n🔴🔴🔴\n🔴🔴🔴\n🔴🔴🔴",
+            color=0x00D9FF
+        )
+        embed.add_field(name="Total Circles", value="9", inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="👁️ Visual Memory", style=discord.ButtonStyle.danger, custom_id="solo_visual")
+    async def visual_memory(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Visual memory test"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        grid = ["🟩", "🟥", "🟦", "🟨", "🟪", "🟧"]
+        random.shuffle(grid)
+        
+        embed = discord.Embed(
+            title="👁️ VISUAL MEMORY TEST",
+            description=f"Memorize this grid:\n{' '.join(grid[:3])}\n{' '.join(grid[3:6])}",
+            color=0x00D9FF
+        )
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="🔍 Spot Difference", style=discord.ButtonStyle.danger, custom_id="solo_spot")
+    async def spot_difference(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Spot the difference game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        embed = discord.Embed(
+            title="🔍 SPOT THE DIFFERENCE",
+            description="Image A: 🎯🎯🎯\nImage B: 🎯🎯🎪\n\nDifference: The third emoji",
+            color=0x00D9FF
+        )
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="⚡ Reflex", style=discord.ButtonStyle.danger, custom_id="solo_reflex")
+    async def reflex_trainer(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Reflex trainer game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        embed = discord.Embed(
+            title="⚡ REFLEX TRAINER",
+            description="Reflex time: ~150ms\nPress the button as fast as you can!",
+            color=0x00D9FF
+        )
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="✍️ Speed Typer", style=discord.ButtonStyle.danger, custom_id="solo_typer")
+    async def speed_typer(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Speed typing game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        words = ["GAMING", "DISCORD", "PYTHON", "AMAZING", "ELITE"]
+        text = " ".join(random.sample(words, 3))
+        
+        embed = discord.Embed(
+            title="✍️ SPEED TYPER",
+            description=f"Type this: **{text}**",
+            color=0x00D9FF
+        )
+        embed.add_field(name="Characters", value=f"{len(text)}", inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="🎨 Color Blindness", style=discord.ButtonStyle.danger, custom_id="solo_colorblind")
+    async def color_blindness_test(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Color blindness test"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        embed = discord.Embed(
+            title="🎨 COLOR BLINDNESS TEST",
+            description="Can you see the number in these dots?\n🔴🔴🔴🔴\n🔴🟠🟠🔴\n🔴🟠🟠🔴\n🔴🔴🔴🔴",
+            color=0x00D9FF
+        )
+        embed.add_field(name="Answer", value="||8||", inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="🍀 Lucky Draw", style=discord.ButtonStyle.secondary, custom_id="solo_lucky")
+    async def lucky_number_draw(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Lucky number draw game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        lucky_number = random.randint(1, 100)
+        
+        embed = discord.Embed(
+            title="🍀 LUCKY NUMBER DRAW",
+            description=f"Your lucky number: **{lucky_number}**",
+            color=0x00D9FF
+        )
+        
+        if lucky_number % 7 == 0:
+            embed.add_field(name="🌟 Divisible", value="By 7 - Extra lucky!", inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="📈 High or Low", style=discord.ButtonStyle.secondary, custom_id="solo_higher")
+    async def higher_or_lower_cards(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Higher or Lower card game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        card1 = random.randint(2, 14)
+        card2 = random.randint(2, 14)
+        
+        embed = discord.Embed(
+            title="📈 HIGHER OR LOWER",
+            description=f"First card: **{card1}**\n\nSecond card: **{card2}**\n\nResult: {'HIGHER ⬆️' if card2 > card1 else 'LOWER ⬇️' if card2 < card1 else 'SAME ='}",
+            color=0x00D9FF
+        )
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="🎯 Number Guess", style=discord.ButtonStyle.secondary, custom_id="solo_numguess")
+    async def number_guessing_1_100(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Number guessing game (1-100)"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        secret_number = random.randint(1, 100)
+        
+        embed = discord.Embed(
+            title="🎯 NUMBER GUESSING (1-100)",
+            description="I'm thinking of a number between 1 and 100...",
+            color=0x00D9FF
+        )
+        embed.add_field(name="Secret Number", value=f"||{secret_number}||", inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="♠️ Blackjack", style=discord.ButtonStyle.secondary, custom_id="solo_blackjack")
+    async def blackjack_simulator(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Blackjack simulator"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        player_cards = [random.randint(2, 11), random.randint(2, 11)]
+        player_total = sum(player_cards)
+        
+        dealer_cards = [random.randint(2, 11), random.randint(2, 11)]
+        dealer_total = sum(dealer_cards)
+        
+        result = "BLACKJACK! 🎉" if player_total == 21 else "WIN! 🎊" if player_total > dealer_total else "LOSE ❌"
+        
+        embed = discord.Embed(
+            title="♠️ BLACKJACK SIMULATOR",
+            description=f"Your cards: {player_cards[0]} + {player_cards[1]} = **{player_total}**",
+            color=0x00D9FF
+        )
+        embed.add_field(name="Dealer", value=f"{dealer_total}", inline=False)
+        embed.add_field(name="Result", value=result, inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="🎲 Dice Duel", style=discord.ButtonStyle.secondary, custom_id="solo_diceduel")
+    async def dice_duel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Dice duel game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        player_roll = random.randint(1, 6)
+        bot_roll = random.randint(1, 6)
+        
+        result = "YOU WIN! 🎉" if player_roll > bot_roll else "BOT WINS ❌" if bot_roll > player_roll else "TIE 🤝"
+        
+        embed = discord.Embed(
+            title="🎲 DICE DUEL",
+            description=f"Your roll: **{player_roll}**\nBot roll: **{bot_roll}**",
+            color=0x00D9FF
+        )
+        embed.add_field(name="Result", value=result, inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="🃏 Card Guess", style=discord.ButtonStyle.secondary, custom_id="solo_cardguess")
+    async def card_guess(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Card guessing game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        suits = ["♠️ Spades", "♥️ Hearts", "♦️ Diamonds", "♣️ Clubs"]
+        correct_suit = random.choice(suits)
+        wrong_suits = [s for s in suits if s != correct_suit]
+        options = [correct_suit] + random.sample(wrong_suits, 2)
+        random.shuffle(options)
+        
+        view = CardGuessView(correct_suit)
+        embed = discord.Embed(
+            title="🃏 CARD GUESS",
+            description="What suit is the card?",
+            color=0x00D9FF
+        )
+        
+        for idx, option in enumerate(options, 1):
+            embed.add_field(name=f"Option {idx}", value=option, inline=False)
+        
+        await interaction.followup.send(embed=embed, view=view)
+    
+    @discord.ui.button(label="🏆 Achievement", style=discord.ButtonStyle.secondary, custom_id="solo_achievement")
+    async def achievement_unlocked(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Achievement unlocked game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        achievements = [
+            "🏆 First Steps - Played your first game",
+            "⭐ Speed Racer - Completed 5 games",
+            "🎯 Accuracy Master - Got 10 correct answers",
+            "🔥 Hot Streak - Won 3 games in a row",
+            "💎 Legendary - Played all games",
+        ]
+        
+        achievement = random.choice(achievements)
+        
+        embed = discord.Embed(
+            title="🏆 ACHIEVEMENT UNLOCKED",
+            description=achievement,
+            color=0x00D9FF
+        )
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="💎 Treasure", style=discord.ButtonStyle.secondary, custom_id="solo_treasure")
+    async def treasure_hunt(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Treasure hunt game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        treasures = ["💎 Diamond", "🥇 Gold Coins", "👑 Crown", "💍 Ring", "📿 Pearls", "🗝️ Ancient Key"]
+        found_treasure = random.choice(treasures)
+        
+        embed = discord.Embed(
+            title="💎 TREASURE HUNT",
+            description=f"You found: **{found_treasure}**",
+            color=0x00D9FF
+        )
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="🚪 Escape Room", style=discord.ButtonStyle.secondary, custom_id="solo_escape")
+    async def escape_room_puzzle(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Escape room puzzle"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        puzzles = [
+            {"puzzle": "What opens with a key but has no lock?", "answer": "A piano"},
+            {"puzzle": "I have cities but no houses. What am I?", "answer": "A map"},
+            {"puzzle": "What can travel the world while staying in a corner?", "answer": "A stamp"},
+            {"puzzle": "What has hands but cannot clap?", "answer": "A clock"},
+        ]
+        
+        puzzle = random.choice(puzzles)
+        
+        embed = discord.Embed(
+            title="🚪 ESCAPE ROOM PUZZLE",
+            description=puzzle["puzzle"],
+            color=0x00D9FF
+        )
+        embed.add_field(name="Answer", value=f"||{puzzle['answer']}||", inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="🎭 Riddle", style=discord.ButtonStyle.secondary, custom_id="solo_riddle")
+    async def riddle_solver(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Riddle solver game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        riddles = [
+            {"riddle": "The more you take, the more you leave behind. What am I?", "answer": "Footsteps"},
+            {"riddle": "I'm light as a feather, yet the strongest person can't hold me for five minutes. What am I?", "answer": "Your breath"},
+            {"riddle": "What can be cracked, made, told, and played?", "answer": "A joke"},
+            {"riddle": "I have a face and two hands, but no arms or legs. What am I?", "answer": "A clock"},
+        ]
+        
+        riddle = random.choice(riddles)
+        
+        embed = discord.Embed(
+            title="🎭 RIDDLE SOLVER",
+            description=riddle["riddle"],
+            color=0x00D9FF
+        )
+        embed.add_field(name="Answer", value=f"||{riddle['answer']}||", inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="🔤 Emoji Puzzle", style=discord.ButtonStyle.secondary, custom_id="solo_emoji")
+    async def emoji_puzzle(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Emoji puzzle game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        puzzles = [
+            {"puzzle": "🚗 + 🚗 = ?", "answer": "A traffic jam"},
+            {"puzzle": "👨 + 👰 = ?", "answer": "A wedding"},
+            {"puzzle": "☀️ + 🌙 = ?", "answer": "Day and night"},
+            {"puzzle": "🍕 + 🍕 = ?", "answer": "Pizza party"},
+        ]
+        
+        puzzle = random.choice(puzzles)
+        
+        embed = discord.Embed(
+            title="🎭 EMOJI PUZZLE",
+            description=puzzle["puzzle"],
+            color=0x00D9FF
+        )
+        embed.add_field(name="Answer", value=f"||{puzzle['answer']}||", inline=False)
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="⚡ Math Sprint", style=discord.ButtonStyle.secondary, custom_id="solo_mathsprint")
+    async def fast_math_sprint(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Fast math sprint game"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        problems = []
+        for _ in range(3):
+            a = random.randint(1, 20)
+            b = random.randint(1, 20)
+            op = random.choice(["+", "-", "*"])
+            
+            if op == "+":
+                result = a + b
+            elif op == "-":
+                result = a - b
+            else:
+                result = a * b
+            
+            problems.append(f"{a} {op} {b} = {result}")
+        
+        embed = discord.Embed(
+            title="⚡ FAST MATH SPRINT",
+            description="\n".join(problems),
+            color=0x00D9FF
+        )
+        embed.add_field(name="Score", value="3/3 ✅", inline=False)
+        
+        await interaction.followup.send(embed=embed)
+
+class RPSChoiceView(discord.ui.View):
+    """Rock Paper Scissors choice selection"""
+    
+    def __init__(self, bot_choice: str):
+        super().__init__(timeout=None)
         self.bot_choice = bot_choice
     
     @discord.ui.button(label="🪨 Rock", style=discord.ButtonStyle.primary, custom_id="rps_rock")
-    async def rock(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+    async def rock(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.play_rps(interaction, "Rock")
     
     @discord.ui.button(label="📄 Paper", style=discord.ButtonStyle.primary, custom_id="rps_paper")
-    async def paper(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+    async def paper(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.play_rps(interaction, "Paper")
     
     @discord.ui.button(label="✂️ Scissors", style=discord.ButtonStyle.primary, custom_id="rps_scissors")
-    async def scissors(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+    async def scissors(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.play_rps(interaction, "Scissors")
     
-    async def play_rps(self, interaction: discord.Interaction, player_choice: str) -> None:
-        if player_choice == self.bot_choice:
-            result = f"🤝 **TIE!** We both chose {player_choice}"
-        elif (player_choice == "Rock" and self.bot_choice == "Scissors") or \
-             (player_choice == "Paper" and self.bot_choice == "Rock") or \
-             (player_choice == "Scissors" and self.bot_choice == "Paper"):
-            result = f"✅ **YOU WIN!** You: {player_choice} | Bot: {self.bot_choice}"
-        else:
-            result = f"❌ **YOU LOSE!** You: {player_choice} | Bot: {self.bot_choice}"
+    async def play_rps(self, interaction: discord.Interaction, user_choice: str):
+        await interaction.response.defer()
         
-        await interaction.response.send_message(result, ephemeral=True)
+        result = "TIE 🤝"
+        if (user_choice == "Rock" and self.bot_choice == "Scissors") or \
+           (user_choice == "Paper" and self.bot_choice == "Rock") or \
+           (user_choice == "Scissors" and self.bot_choice == "Paper"):
+            result = "YOU WIN! 🎉"
+        elif user_choice != self.bot_choice:
+            result = "BOT WINS ❌"
+        
+        embed = discord.Embed(
+            title="✂️ ROCK PAPER SCISSORS",
+            description=f"Your choice: **{user_choice}**\nBot choice: **{self.bot_choice}**",
+            color=0x00D9FF
+        )
+        embed.add_field(name="Result", value=result, inline=False)
+        
+        await interaction.followup.send(embed=embed)
 
-class NumberGuessView(discord.ui.View):
-    """Number guessing game view"""
+class TriviaView(discord.ui.View):
+    """Trivia answer selection"""
     
-    def __init__(self, secret: int) -> None:
-        super().__init__(timeout=300)
-        self.secret = secret
-        self.attempts = 0
+    def __init__(self, correct_answer: str):
+        super().__init__(timeout=None)
+        self.correct_answer = correct_answer
     
-    @discord.ui.button(label="Submit Guess", style=discord.ButtonStyle.primary, custom_id="submit_guess")
-    async def submit(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        await interaction.response.send_modal(GuessModal(self.secret, self.attempts))
+    async def check_answer(self, interaction: discord.Interaction, selected: str):
+        await interaction.response.defer()
+        
+        is_correct = selected == self.correct_answer
+        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! Correct answer: {self.correct_answer}"
+        
+        embed = discord.Embed(
+            title="🧠 TRIVIA RESULT",
+            description=result,
+            color=0x00D9FF if is_correct else 0xFF0000
+        )
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="trivia_1")
+    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    
+    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="trivia_2")
+    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
+    
+    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="trivia_3")
+    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
 
-class GuessModal(discord.ui.Modal, title="Guess the Number"):
-    """Modal for number guessing"""
-    answer = discord.ui.TextInput(label="Enter number (1-100)", placeholder="50")
+class CapitalsView(discord.ui.View):
+    """Capitals game answer selection"""
     
-    def __init__(self, secret: int, attempts: int) -> None:
-        super().__init__()
-        self.secret = secret
-        self.attempts = attempts
+    def __init__(self, correct_answer: str, country: str):
+        super().__init__(timeout=None)
+        self.correct_answer = correct_answer
+        self.country = country
     
-    async def on_submit(self, interaction: discord.Interaction) -> None:
+    async def check_answer(self, interaction: discord.Interaction, selected: str):
+        await interaction.response.defer()
+        
+        is_correct = selected == self.correct_answer
+        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! Correct answer: {self.correct_answer}"
+        
+        embed = discord.Embed(
+            title="🌍 CAPITALS RESULT",
+            description=f"Capital of {self.country}: {result}",
+            color=0x00D9FF if is_correct else 0xFF0000
+        )
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="caps_1")
+    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    
+    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="caps_2")
+    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
+    
+    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="caps_3")
+    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
+
+class FlagsView(discord.ui.View):
+    """Flags game answer selection"""
+    
+    def __init__(self, correct_answer: str, flag: str):
+        super().__init__(timeout=None)
+        self.correct_answer = correct_answer
+        self.flag = flag
+    
+    async def check_answer(self, interaction: discord.Interaction, selected: str):
+        await interaction.response.defer()
+        
+        is_correct = selected == self.correct_answer
+        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! Correct answer: {self.correct_answer}"
+        
+        embed = discord.Embed(
+            title="🗺️ FLAGS RESULT",
+            description=f"{self.flag} {result}",
+            color=0x00D9FF if is_correct else 0xFF0000
+        )
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="flag_1")
+    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    
+    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="flag_2")
+    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
+    
+    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="flag_3")
+    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
+
+class MathView(discord.ui.View):
+    """Math game answer selection"""
+    
+    def __init__(self, correct_answer: str):
+        super().__init__(timeout=None)
+        self.correct_answer = correct_answer
+    
+    async def check_answer(self, interaction: discord.Interaction, selected: str):
+        await interaction.response.defer()
+        
+        is_correct = selected == self.correct_answer
+        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! Correct answer: {self.correct_answer}"
+        
+        embed = discord.Embed(
+            title="🧮 MATH RESULT",
+            description=result,
+            color=0x00D9FF if is_correct else 0xFF0000
+        )
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="math_1")
+    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    
+    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="math_2")
+    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
+    
+    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="math_3")
+    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
+
+class ProverbsView(discord.ui.View):
+    """Proverbs answer selection"""
+    
+    def __init__(self, correct_answer: str, proverb: str):
+        super().__init__(timeout=None)
+        self.correct_answer = correct_answer
+        self.proverb = proverb
+    
+    async def check_answer(self, interaction: discord.Interaction, selected: str):
+        await interaction.response.defer()
+        
+        is_correct = selected == self.correct_answer
+        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! \nCorrect: {self.correct_answer}"
+        
+        embed = discord.Embed(
+            title="📜 PROVERB RESULT",
+            description=result,
+            color=0x00D9FF if is_correct else 0xFF0000
+        )
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="prov_1")
+    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    
+    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="prov_2")
+    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
+    
+    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="prov_3")
+    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
+
+class AnagramsView(discord.ui.View):
+    """Anagrams answer selection"""
+    
+    def __init__(self, correct_answer: str, scrambled: str):
+        super().__init__(timeout=None)
+        self.correct_answer = correct_answer
+        self.scrambled = scrambled
+    
+    async def check_answer(self, interaction: discord.Interaction, selected: str):
+        await interaction.response.defer()
+        
+        is_correct = selected == self.correct_answer
+        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! Correct: {self.correct_answer}"
+        
+        embed = discord.Embed(
+            title="🔤 ANAGRAM RESULT",
+            description=result,
+            color=0x00D9FF if is_correct else 0xFF0000
+        )
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="ana_1")
+    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    
+    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="ana_2")
+    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
+    
+    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="ana_3")
+    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
+
+class PatternView(discord.ui.View):
+    """Pattern finder answer selection"""
+    
+    def __init__(self, correct_answer: str, pattern_type: str):
+        super().__init__(timeout=None)
+        self.correct_answer = correct_answer
+        self.pattern_type = pattern_type
+    
+    async def check_answer(self, interaction: discord.Interaction, selected: str):
+        await interaction.response.defer()
+        
+        is_correct = selected == self.correct_answer
+        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! Correct: {self.correct_answer}"
+        
+        embed = discord.Embed(
+            title="📊 PATTERN RESULT",
+            description=f"{result}\nType: {self.pattern_type}",
+            color=0x00D9FF if is_correct else 0xFF0000
+        )
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="pat_1")
+    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    
+    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="pat_2")
+    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
+    
+    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="pat_3")
+    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
+
+class ColorMatchView(discord.ui.View):
+    """Color matching answer selection"""
+    
+    def __init__(self, correct_emoji: str, color_name: str):
+        super().__init__(timeout=None)
+        self.correct_emoji = correct_emoji
+        self.color_name = color_name
+    
+    async def check_answer(self, interaction: discord.Interaction, selected: str):
+        await interaction.response.defer()
+        
+        is_correct = selected == self.correct_emoji
+        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! Correct: {self.correct_emoji}"
+        
+        embed = discord.Embed(
+            title="🎨 COLOR MATCH RESULT",
+            description=result,
+            color=0x00D9FF if is_correct else 0xFF0000
+        )
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="col_1")
+    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    
+    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="col_2")
+    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
+    
+    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="col_3")
+    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
+
+class ShadowView(discord.ui.View):
+    """Shadow matching answer selection"""
+    
+    def __init__(self, correct_object: str):
+        super().__init__(timeout=None)
+        self.correct_object = correct_object
+    
+    async def check_answer(self, interaction: discord.Interaction, selected: str):
+        await interaction.response.defer()
+        
+        is_correct = selected == self.correct_object
+        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! Correct: {self.correct_object}"
+        
+        embed = discord.Embed(
+            title="🌑 SHADOW MATCH RESULT",
+            description=result,
+            color=0x00D9FF if is_correct else 0xFF0000
+        )
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="shd_1")
+    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    
+    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="shd_2")
+    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
+    
+    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="shd_3")
+    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
+
+class CardGuessView(discord.ui.View):
+    """Card guess answer selection"""
+    
+    def __init__(self, correct_suit: str):
+        super().__init__(timeout=None)
+        self.correct_suit = correct_suit
+    
+    async def check_answer(self, interaction: discord.Interaction, selected: str):
+        await interaction.response.defer()
+        
+        is_correct = selected == self.correct_suit
+        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! Correct: {self.correct_suit}"
+        
+        embed = discord.Embed(
+            title="🃏 CARD GUESS RESULT",
+            description=result,
+            color=0x00D9FF if is_correct else 0xFF0000
+        )
+        
+        await interaction.followup.send(embed=embed)
+    
+    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="crd_1")
+    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    
+    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="crd_2")
+    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
+    
+    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="crd_3")
+    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
+
+class SoloCreationView(discord.ui.View):
+    """Main button to create solo arcade session"""
+    
+    def __init__(self):
+        super().__init__(timeout=None)
+    
+    @discord.ui.button(label="🕹️ Create Solo Session", style=discord.ButtonStyle.primary, custom_id="solo_create_session")
+    async def create_solo_session(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Create a private solo gaming channel for the user"""
+        
+        await interaction.response.defer(ephemeral=True)
+        
+        user_id = interaction.user.id
+        guild_id = interaction.guild.id
+        
         try:
-            guess = int(self.answer.value)
-            self.attempts += 1
+            logger.info(f"👤 User {interaction.user} ({user_id}) creating solo session in guild {guild_id}")
             
-            if guess == self.secret:
-                await interaction.response.send_message(f"✅ **CORRECT!** You guessed it in {self.attempts} attempts!", ephemeral=True)
-            elif guess < self.secret:
-                await interaction.response.send_message(f"❌ Too low! Try again (Attempt {self.attempts})", ephemeral=True)
-            else:
-                await interaction.response.send_message(f"❌ Too high! Try again (Attempt {self.attempts})", ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message("❌ Invalid number! Please enter a number between 1 and 100.", ephemeral=True)
-
-class RiddleView(discord.ui.View):
-    """Riddle answer view"""
-    
-    def __init__(self, correct_answer: str) -> None:
-        super().__init__(timeout=120)
-        self.correct_answer = correct_answer
-
-class MathSprintView(discord.ui.View):
-    """Math sprint answer view"""
-    
-    def __init__(self, correct_answer: int) -> None:
-        super().__init__(timeout=20)
-        self.correct_answer = correct_answer
-
-# ============================================================================
-# AUTO-CLEANUP FUNCTION
-# ============================================================================
-
-async def auto_cleanup_channel(bot: commands.Bot, channel_id: int, user_id: int, timeout_seconds: int = 900) -> None:
-    """Automatically delete channel after inactivity timeout"""
-    try:
-        await asyncio.sleep(timeout_seconds)
-        
-        channel = bot.get_channel(channel_id)
-        if channel:
-            await channel.delete(reason="Solo arcade session expired (inactivity timeout)")
-            logger.info(f"🗑️ Cleaned up solo arcade channel: {channel_id} (user: {user_id})")
+            category_name = "🎮 Gaming Hub"
+            category = discord.utils.get(interaction.guild.categories, name=category_name)
             
-            # Remove from database
-            from main import DatabasePool
-            async with DatabasePool.pool.acquire() as conn:
-                await conn.execute(
-                    "DELETE FROM game_channels WHERE channel_id = $1",
-                    channel_id
+            if not category:
+                logger.error(f"❌ Gaming Hub category not found in guild {guild_id}")
+                await interaction.followup.send(
+                    "❌ Gaming Hub category not found! Please run `/setup_gaming_hub` first.",
+                    ephemeral=True
                 )
-    except Exception as e:
-        logger.error(f"Error in auto-cleanup: {e}")
+                return
+            
+            channel_name = f"🎮-{interaction.user.name}-arcade"
+            
+            overwrites = {
+                interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+                interaction.client.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+            }
+            
+            solo_channel = await interaction.guild.create_text_channel(
+                channel_name,
+                category=category,
+                overwrites=overwrites,
+                topic=f"Private solo arcade for {interaction.user.name}"
+            )
+            
+            logger.info(f"✅ Created solo channel {solo_channel.id} for user {user_id}")
+            
+            async with interaction.client.db_pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO game_channels (guild_id, channel_id, host_id, lobby_type, last_activity)
+                    VALUES ($1, $2, $3, $4, NOW())
+                    """,
+                    guild_id, solo_channel.id, user_id, "solo"
+                )
+            
+            logger.info(f"📊 Recorded solo channel {solo_channel.id} in database")
+            
+            welcome_embed = discord.Embed(
+                title="🕹️ SOLO ARCADE GRID",
+                description="Select a game from the grid below to start playing!",
+                color=0x00D9FF
+            )
+            welcome_embed.add_field(
+                name="📊 Game Selection",
+                value="Click any button to play that game. Each game is unique!",
+                inline=False
+            )
+            welcome_embed.set_footer(text="Your channel will auto-delete after 15 minutes of inactivity")
+            
+            await solo_channel.send(embed=welcome_embed, view=SoloGameView(user_id, solo_channel.id, interaction.client))
+            
+            logger.info(f"✅ Game grid deployed to solo channel {solo_channel.id}")
+            
+            await interaction.followup.send(
+                f"✅ Solo session created! Check {solo_channel.mention}",
+                ephemeral=True
+            )
+        
+        except Exception as e:
+            logger.error(f"❌ Failed to create solo session: {e}", exc_info=True)
+            await interaction.followup.send(
+                f"❌ Failed to create solo session: {str(e)}",
+                ephemeral=True
+            )
 
-# ============================================================================
-# COG REGISTRATION
-# ============================================================================
-
-class SoloArcadeCog(commands.Cog):
-    """Solo Arcade Engine Cog"""
+class SoloManager(commands.Cog):
+    """Solo Arcade Manager Cog"""
     
-    def __init__(self, bot: commands.Bot) -> None:
+    def __init__(self, bot):
         self.bot = bot
+    
+    async def cog_load(self):
+        logger.info("✅ SoloManager cog loaded successfully")
 
-async def setup(bot: commands.Bot) -> None:
-    """Setup the cog"""
-    await bot.add_cog(SoloArcadeCog(bot))
-    logger.info("✅ Solo Arcade Cog loaded")
+async def setup(bot):
+    """Setup function for the cog"""
+    await bot.add_cog(SoloManager(bot))
+    logger.info("✅ SoloManager cog registered")
