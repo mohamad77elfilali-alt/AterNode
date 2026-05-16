@@ -9,6 +9,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# تحميل المتغيرات البيئية
 load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -19,8 +20,7 @@ if not DISCORD_TOKEN or not DATABASE_URL:
     raise ValueError("Missing DISCORD_TOKEN or DATABASE_URL in environment variables")
 
 class ColoredFormatter(logging.Formatter):
-    """Custom formatter with color codes for console output"""
-    
+    """منسق مخصص لتلوين السجلات في شاشة الكونسول بشكل احترافي"""
     COLORS = {
         'DEBUG': '\033[36m',      # Cyan
         'INFO': '\033[32m',       # Green
@@ -36,34 +36,23 @@ class ColoredFormatter(logging.Formatter):
         return super().format(record)
 
 def setup_logging():
-    """Configure color-coded logging infrastructure"""
+    """إعداد بنية تسجيل الأخطاء والبيانات (Logging)"""
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
     
     logger = logging.getLogger("GamingBot")
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
     
+    # التسجيل في الكونسول ملون
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    console_formatter = ColoredFormatter(
-        '[%(asctime)s] %(levelname)s | %(name)s: %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    console_handler.setFormatter(console_formatter)
-    
-    file_handler = RotatingFileHandler(
-        log_dir / "gaming_bot.log",
-        maxBytes=10_000_000,
-        backupCount=5
-    )
-    file_handler.setLevel(logging.DEBUG)
-    file_formatter = logging.Formatter(
-        '[%(asctime)s] %(levelname)s | %(name)s: %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    file_handler.setFormatter(file_formatter)
-    
+    console_formatter = ColoredFormatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    console_handler.set_formatter(console_formatter)
     logger.addHandler(console_handler)
+    
+    # الحفظ في ملف مستدار
+    file_handler = RotatingFileHandler(log_dir / "bot.log", maxBytes=5*1024*1024, backupCount=3, encoding="utf-8")
+    file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+    file_handler.set_formatter(file_formatter)
     logger.addHandler(file_handler)
     
     return logger
@@ -71,299 +60,283 @@ def setup_logging():
 logger = setup_logging()
 
 class GamingBot(commands.Bot):
-    """Elite Discord Gaming Bot with PostgreSQL persistence"""
-    
+    """كلاس البوت الرئيسي المطور لإدارة الألعاب بشكل مستقر وأبدي"""
     def __init__(self):
         intents = discord.Intents.default()
         intents.message_content = True
+        intents.guilds = True
         intents.members = True
+        intents.voice_states = True # مهم جداً لتتبع خروج الأعضاء من قنوات السلو واللوبي
         
         super().__init__(
             command_prefix="!",
             intents=intents,
+            application_id=None,
             help_command=None
         )
-        
-        self.db_pool: asyncpg.Pool = None
-        self.active_channels: dict = {}
-    
+        self.db_pool: Optional[asyncpg.Pool] = None
+
+    async def initialize_database(self):
+        """إنشاء الاتصال بقاعدة البيانات وبناء الجداول الأساسية إن لم تكن موجودة"""
+        logger.info("📡 جاري الاتصال بقاعدة البيانات واختبار الجداول...")
+        try:
+            self.db_pool = await asyncpg.create_pool(
+                DATABASE_URL,
+                min_size=2,
+                max_size=10,
+                command_timeout=60.0
+            )
+            
+            async with self.db_pool.acquire() as conn:
+                # جدول تتبع قنوات السلو النشطة والحذف التلقائي
+                await conn.execute('''
+                    CREATE TABLE IF NOT EXISTS game_channels (
+                        channel_id BIGINT PRIMARY KEY,
+                        guild_id BIGINT NOT EXISTS,
+                        host_id BIGINT NOT EXISTS,
+                        lobby_type VARCHAR(20) NOT EXISTS,
+                        last_activity TIMESTAMP DEFAULT NOW()
+                    );
+                ''')
+                # جدول تتبع اللوبي الجماعي النشط والخصوصية والعدد
+                await conn.execute('''
+                    CREATE TABLE IF NOT EXISTS active_lobbies (
+                        channel_id BIGINT PRIMARY KEY,
+                        guild_id BIGINT NOT EXISTS,
+                        host_id BIGINT NOT EXISTS,
+                        max_players INT DEFAULT 4,
+                        is_private BOOLEAN DEFAULT FALSE,
+                        last_activity TIMESTAMP DEFAULT NOW()
+                    );
+                ''')
+            logger.info("✅ تم فحص وإعداد جداول قاعدة البيانات بنجاح.")
+        except Exception as e:
+            logger.critical(f"❌ فشل الاتصال بقاعدة البيانات: {e}", exc_info=True)
+            sys.exit(1)
+
+    async def load_cogs(self):
+        """تحميل ملفات الـ Cogs بشكل ديناميكي وآمن"""
+        cogs_to_load = ['cogs.solo_manager', 'cogs.multi_manager']
+        for cog in cogs_to_load:
+            try:
+                await self.load_extension(cog)
+                logger.info(f"📦 تم تحميل الموديل بنجاح: {cog}")
+            except Exception as e:
+                logger.error(f"❌ فشل تحميل الموديل {cog}: {e}", exc_info=True)
+
     async def setup_hook(self):
-        """Initialize database and load cogs"""
-        logger.info("🚀 Initializing GamingBot setup hook...")
-        
+        """إعداد المزامنة وتسجيل الأزرار الثابتة لكي لا تتعطل أبداً عند الريستارت"""
         await self.initialize_database()
         await self.load_cogs()
         
-        self.cleanup_inactive_channels.start()
-        logger.info("✅ Setup hook complete - Database initialized, Cogs loaded, Cleanup task started")
-    
-    async def initialize_database(self):
-        """Create PostgreSQL connection pool and initialize schema"""
-        try:
-            logger.info("🗄️  Connecting to PostgreSQL database...")
-            self.db_pool = await asyncpg.create_pool(
-                DATABASE_URL,
-                min_size=5,
-                max_size=20,
-                command_timeout=60
-            )
-            logger.info("✅ PostgreSQL connection pool established (5-20 connections)")
-            
-            async with self.db_pool.acquire() as conn:
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS game_channels (
-                        id SERIAL PRIMARY KEY,
-                        guild_id BIGINT NOT NULL,
-                        channel_id BIGINT NOT NULL UNIQUE,
-                        host_id BIGINT NOT NULL,
-                        lobby_type TEXT NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        metadata JSONB DEFAULT '{}'::jsonb
-                    );
-                """)
-                
-                await conn.execute("""
-                    CREATE TABLE IF NOT EXISTS active_lobbies (
-                        id SERIAL PRIMARY KEY,
-                        guild_id BIGINT NOT NULL,
-                        channel_id BIGINT NOT NULL UNIQUE,
-                        host_id BIGINT NOT NULL,
-                        max_players INT DEFAULT 4,
-                        is_private BOOLEAN DEFAULT FALSE,
-                        invited_users BIGINT[] DEFAULT ARRAY[]::BIGINT[],
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    );
-                """)
-                
-                await conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_game_channels_guild ON game_channels(guild_id);
-                """)
-                
-                await conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_active_lobbies_guild ON active_lobbies(guild_id);
-                """)
-            
-            logger.info("✅ Database schema initialized successfully")
+        # استدعاء وتسجيل الـ Views الدائمة المحدثة لحل مشكلة عدم استجابة الأزرار
+        from cogs.solo_manager import SoloGamePage1View
+        from cogs.multi_manager import LobbyDashboardView, LobbySession
         
-        except Exception as e:
-            logger.error(f"❌ Database initialization failed: {e}", exc_info=True)
-            raise
-    
-    async def load_cogs(self):
-        """Dynamically load all cogs from cogs directory"""
-        try:
-            cogs_dir = Path("cogs")
-            cogs_dir.mkdir(exist_ok=True)
-            
-            cog_files = list(cogs_dir.glob("*.py"))
-            
-            if not cog_files:
-                logger.warning("⚠️  No cog files found in cogs/ directory")
-                return
-            
-            for cog_file in cog_files:
-                cog_name = cog_file.stem
-                if cog_name.startswith("_"):
-                    continue
-                
-                try:
-                    await self.load_extension(f"cogs.{cog_name}")
-                    logger.info(f"✅ Loaded cog: {cog_name}")
-                except Exception as e:
-                    logger.error(f"❌ Failed to load cog {cog_name}: {e}", exc_info=True)
+        # تسجيل أزرار السلو الدائمة
+        self.add_view(SoloGamePage1View(user_id=0, channel_id=0, bot=self))
         
-        except Exception as e:
-            logger.error(f"❌ Cog loading failed: {e}", exc_info=True)
-    
-    @tasks.loop(minutes=5)
-    async def cleanup_inactive_channels(self):
-        """Automatically clean up inactive game channels every 5 minutes"""
-        try:
-            if not self.db_pool:
-                return
-            
-            async with self.db_pool.acquire() as conn:
-                inactive_channels = await conn.fetch("""
-                    SELECT channel_id, guild_id FROM game_channels 
-                    WHERE EXTRACT(EPOCH FROM (NOW() - last_activity)) > 900;
-                """)
-            
-            for record in inactive_channels:
-                channel_id = record["channel_id"]
-                guild_id = record["guild_id"]
-                
-                try:
-                    channel = self.get_channel(channel_id)
-                    if channel:
-                        await channel.delete(reason="Inactivity cleanup (15 minutes)")
-                        logger.info(f"🗑️  Deleted inactive channel {channel_id} from guild {guild_id}")
-                    
-                    async with self.db_pool.acquire() as conn:
-                        await conn.execute(
-                            "DELETE FROM game_channels WHERE channel_id = $1",
-                            channel_id
-                        )
-                
-                except discord.NotFound:
-                    async with self.db_pool.acquire() as conn:
-                        await conn.execute(
-                            "DELETE FROM game_channels WHERE channel_id = $1",
-                            channel_id
-                        )
-                    logger.info(f"🗑️  Cleaned up database record for deleted channel {channel_id}")
-                
-                except Exception as e:
-                    logger.error(f"❌ Error cleaning up channel {channel_id}: {e}", exc_info=True)
+        # تسجيل أزرار اللوبي الجماعي الثابتة بشكل افترافي لحفظ الـ custom_id
+        dummy_lobby = LobbySession(host_id=0, channel_id=0, guild_id=0)
+        self.add_view(LobbyDashboardView(lobby=dummy_lobby, bot=self))
         
-        except Exception as e:
-            logger.error(f"❌ Cleanup task failed: {e}", exc_info=True)
-    
-    @cleanup_inactive_channels.before_loop
-    async def before_cleanup(self):
-        """Wait for bot to be ready before starting cleanup task"""
-        await self.wait_until_ready()
-    
+        # بدء مهمة تنظيف قنوات الخمول في الخلفية لتوفير الذاكرة
+        self.clean_inactive_channels.start()
+        logger.info("⚙️ تم تسجيل الـ Views الثابتة بنجاح وتشغيل مهام التنظيف التلقائي في الخلفية.")
+
     async def on_ready(self):
-        """Log successful bot connection"""
-        logger.info(f"🎮 Bot connected as {self.user} (ID: {self.user.id})")
-        logger.info(f"📊 Connected to {len(self.guilds)} guild(s)")
-        logger.info(f"👥 Total members cached: {sum(g.member_count or 0 for g in self.guilds)}")
+        logger.info(f"🟢 تم تشغيل البوت بنجاح باسم: {self.user}")
+        logger.info(f"🛡️ معرف المسؤول المحمي: {ADMIN_ID}")
         
+        # ضبط حالة البوت بشكل احترافي نيون
+        await self.change_presence(
+            activity=discord.Activity(type=discord.ActivityType.playing, name="🎮 Arcade Hub | /setup_gaming_hub")
+        )
+
+    @tasks.loop(minutes=2)
+    async def clean_inactive_channels(self):
+        """مهمة دورية لحذف قنوات الألعاب المهجورة تلقائياً بعد خمول طويل لمنع امتلاء السيرفر"""
+        logger.info("🧹 جاري فحص وتنظيف قنوات الألعاب الخاملة...")
         try:
-            synced = await self.tree.sync()
-            logger.info(f"✅ Synced {len(synced)} command(s)")
+            async with self.db_pool.acquire() as conn:
+                # تدمير قنوات السلو الخاملة لأكثر من 15 دقيقة
+                records = await conn.fetch(
+                    "SELECT channel_id FROM game_channels WHERE last_activity < NOW() - INTERVAL '15 minutes'"
+                )
+                for rec in records:
+                    channel = self.get_channel(rec['channel_id'])
+                    if channel:
+                        await channel.delete(reason="تدمير ذاتي: انتهاء صلاحية الجلسة بسبب الخمول")
+                    await conn.execute("DELETE FROM game_channels WHERE channel_id = $1", rec['channel_id'])
         except Exception as e:
-            logger.error(f"❌ Failed to sync commands: {e}", exc_info=True)
+            logger.error(f"Error in clean_inactive_channels task: {e}")
+
+    async def close(self):
+        """إغلاق آمن للاتصالات عند إطفاء البوت"""
+        if self.db_pool:
+            await self.db_pool.close()
+            logger.info("📡 تم إغلاق اتصال قاعدة البيانات بنجاح.")
+        await super().close()
 
 bot = GamingBot()
 
-@bot.tree.command(name="setup_gaming_hub", description="Set up the Gaming Hub (Admin Only)")
-@discord.app_commands.checks.has_permissions(administrator=True)
-async def setup_gaming_hub(interaction: discord.Interaction):
-    """Create the Gaming Hub Category with Solo and Multiplayer channels"""
-    
-    logger.info(f"🎮 /setup_gaming_hub invoked by {interaction.user} in guild {interaction.guild.id}")
-    
-    try:
+# --- تعريف أزرار لوحة التحكم الرئيسية (Persistent Views) ---
+
+class GamingHubControlView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="🕹️ إنشاء غرفة لعب فردي (سولو)", style=discord.ButtonStyle.blurple, custom_id="hub_create_solo")
+    async def create_solo(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """إنشاء قناة نصية خاصة وخفية فوراً للاعب سولو"""
         await interaction.response.defer(ephemeral=True)
         
         guild = interaction.guild
-        category_name = "🎮 Gaming Hub"
+        user = interaction.user
         
-        existing_category = discord.utils.get(guild.categories, name=category_name)
-        if existing_category:
-            logger.info(f"⚠️  Gaming Hub category already exists in guild {guild.id}")
-            await interaction.followup.send(
-                "✅ Gaming Hub already exists! Category found.",
-                ephemeral=True
+        # صلاحيات القناة: العضو والبوت فقط يرونها
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)
+        }
+        
+        try:
+            # البحث عن تصنيف الألعاب
+            category = discord.utils.get(guild.categories, name="🎮 GAMING HUB")
+            channel = await guild.create_text_channel(
+                name=f"👤-سولو-{user.name}",
+                category=category,
+                overwrites=overwrites,
+                reason="جلسة لعب سلو جديدة"
             )
-            return
-        
-        logger.info(f"📁 Creating Gaming Hub category in guild {guild.id}")
-        category = await guild.create_category(category_name)
-        
-        logger.info(f"📝 Creating solo-arcade channel in guild {guild.id}")
-        solo_channel = await guild.create_text_channel(
-            "👤-solo-arcade",
-            category=category,
-            topic="Create your private solo gaming session"
-        )
-        
-        logger.info(f"📝 Creating multiplayer-lobbies channel in guild {guild.id}")
-        multi_channel = await guild.create_text_channel(
-            "👥-multiplayer-lobbies",
-            category=category,
-            topic="Host and join multiplayer gaming lobbies"
-        )
-        
-        solo_embed = discord.Embed(
-            title="🕹️ SOLO ARCADE ENGINE",
-            description="Welcome to your private gaming sanctuary. Click the button below to spin up your exclusive solo session and dive into 50+ mini-games!",
-            color=0x9D00FF
-        )
-        solo_embed.add_field(
-            name="🎮 What You Get",
-            value="• **50+ Unique Games** - Arcade, Trivia, Simulations, and more\n• **Private Channel** - Your exclusive gaming space\n• **Instant Deletion** - Auto-cleanup when you're done\n• **Pure Gameplay** - No economy, just pure fun",
-            inline=False
-        )
-        solo_embed.add_field(
-            name="⚡ How It Works",
-            value="1. Click the button below\n2. Get your private channel instantly\n3. Pick any game from the arcade grid\n4. Play as much as you want\n5. Channel auto-deletes after inactivity",
-            inline=False
-        )
-        solo_embed.set_footer(text="🔮 Powered by Elite Gaming Bot | Made with ❤️")
-        solo_embed.color = 0x00D9FF
-        
-        from cogs.solo_manager import SoloCreationView
-        await solo_channel.send(embed=solo_embed, view=SoloCreationView())
-        logger.info(f"✅ Solo arcade interface deployed to {solo_channel.id}")
-        
-        multi_embed = discord.Embed(
-            title="⚔️ MULTIPLAYER MATCHMAKING HUB",
-            description="Gather your squad and host epic multiplayer showdowns! Configure your lobby and challenge other players to unforgettable party games.",
-            color=0xFF00FF
-        )
-        multi_embed.add_field(
-            name="🎯 Game Modes",
-            value="• **Truth or Dare** - Classic party chaos\n• **Would You Rather** - Hilarious decisions\n• **Word Wars** - Linguistic combat\n• **King of the Hill** - Last player standing\n• **And 6 More Epic Multiplayer Experiences**",
-            inline=False
-        )
-        multi_embed.add_field(
-            name="⚙️ Advanced Controls",
-            value="• 👥 Set max player limits\n• 🔓 Toggle between Public & Private\n• ➕ Invite specific friends\n• 🎮 Launch your custom lobby",
-            inline=False
-        )
-        multi_embed.set_footer(text="🔮 Powered by Elite Gaming Bot | Made with ❤️")
-        multi_embed.color = 0xFF1493
-        
-        from cogs.multi_manager import MultiCreationView
-        await multi_channel.send(embed=multi_embed, view=MultiCreationView())
-        logger.info(f"✅ Multiplayer interface deployed to {multi_channel.id}")
-        
-        await interaction.followup.send(
-            f"✅ **Gaming Hub Created Successfully!**\n\n"
-            f"📁 Category: {category.mention}\n"
-            f"👤 Solo Channel: {solo_channel.mention}\n"
-            f"👥 Multi Channel: {multi_channel.mention}\n\n"
-            f"🎮 Your gaming infrastructure is ready!",
-            ephemeral=True
-        )
-        
-        logger.info(f"✅ Setup complete for guild {guild.id}")
-    
-    except Exception as e:
-        logger.error(f"❌ setup_gaming_hub failed: {e}", exc_info=True)
-        await interaction.followup.send(
-            f"❌ Failed to set up Gaming Hub: {str(e)}",
-            ephemeral=True
-        )
+            
+            # تسجيل القناة في قاعدة البيانات للتتبع
+            async with interaction.client.db_pool.acquire() as conn:
+                await conn.execute(
+                    "INSERT INTO game_channels (channel_id, guild_id, host_id, lobby_type) VALUES ($1, $2, $3, 'solo')",
+                    channel.id, guild.id, user.id
+                )
+            
+            # إرسال لوحة ألعاب السولو المحدثة داخل القناة الجديدة
+            from cogs.solo_manager import SoloGamePage1View
+            embed = discord.Embed(
+                title="🕹️ أهلاً بك في صالة الألعاب الفردية النيون",
+                description="صالة ألعاب ترفيهية خاصة بك بالكامل! اضغط على أي زر بالأسفل لتشغيل اللعبة فوراً دون انتظار.",
+                color=0x00D9FF
+            )
+            embed.set_footer(text="سيتم تدمير هذه القناة تلقائياً فور خروجك من اللعب أو عند الخمول لميكانيكية أمن السيرفر.")
+            
+            await channel.send(embed=embed, view=SoloGamePage1View(user.id, channel.id, interaction.client))
+            await interaction.followup.send(f"✅ تم فتح صالتك الفردية بنجاح! توجه إلى هنا: {channel.mention}", ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Failed to create solo channel: {e}")
+            await interaction.followup.send("❌ حدث خطأ أثناء إنشاء صالة الألعاب الفردية الخاصة بك.", ephemeral=True)
 
-@setup_gaming_hub.error
-async def setup_gaming_hub_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
-    """Error handler for setup_gaming_hub"""
-    if isinstance(error, discord.app_commands.MissingPermissions):
-        logger.warning(f"❌ {interaction.user} attempted setup_gaming_hub without admin permissions")
-        await interaction.response.send_message(
-            "❌ You need Administrator permissions to set up the Gaming Hub!",
-            ephemeral=True
-        )
-    else:
-        logger.error(f"❌ Unexpected error in setup_gaming_hub: {error}", exc_info=True)
-        await interaction.response.send_message(
-            "❌ An unexpected error occurred!",
-            ephemeral=True
-        )
+    @discord.ui.button(label="⚔️ إنشاء لوبي مواجهة جماعية", style=discord.ButtonStyle.green, custom_id="hub_create_multi")
+    async def create_multi(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """إنشاء لوبي مواجهة جماعي مخصص والتحكم به"""
+        await interaction.response.defer(ephemeral=True)
+        
+        guild = interaction.guild
+        user = interaction.user
+        
+        # في البداية يتم إنشاؤها خاصة، ويقوم المسؤول بفتحها باستخدام زر لوحة التحكم
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)
+        }
+        
+        try:
+            category = discord.utils.get(guild.categories, name="🎮 GAMING HUB")
+            channel = await guild.create_text_channel(
+                name=f"👥-لوبي-{user.name}",
+                category=category,
+                overwrites=overwrites,
+                reason="غرفة مواجهة جماعية جديدة"
+            )
+            
+            from cogs.multi_manager import LobbySession, LobbyDashboardView
+            lobby = LobbySession(host_id=user.id, channel_id=channel.id, guild_id=guild.id)
+            
+            # تسجيل اللوبي الجماعي في قاعدة البيانات للتحديثات
+            async with interaction.client.db_pool.acquire() as conn:
+                await conn.execute(
+                    "INSERT INTO active_lobbies (channel_id, guild_id, host_id) VALUES ($1, $2, $3)",
+                    channel.id, guild.id, user.id
+                )
+            
+            # حفظ الجلسة في ذاكرة الـ Cog المشغل
+            multi_cog = interaction.client.get_cog("MultiManager")
+            if multi_cog:
+                multi_cog.active_lobbies[channel.id] = lobby
+
+            embed = discord.Embed(
+                title="🛡️ لوحة التحكم في اللوبي الجماعي المطور",
+                description="بصفتك منظم هذه المواجهة، يمكنك التحكم في الخصوصية وسعة اللاعبين الفردية عن طريق الأزرار المحدثة أدناه:",
+                color=0xFF1493
+            )
+            embed.add_field(name="📊 الإعدادات الافتراضية", value="• **الحالة:** 🔒 خاصة (Invite Only)\n• **الحد الأقصى:** 4 لاعبين", inline=False)
+            
+            await channel.send(embed=embed, view=LobbyDashboardView(lobby, interaction.client))
+            await interaction.followup.send(f"⚔️ تم إنشاء اللوبي الجماعي بنجاح! ادخل هنا لضبطه واللعب: {channel.mention}", ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Failed to create multiplayer channel: {e}")
+            await interaction.followup.send("❌ حدث خطأ أثناء إطلاق غرفتك الجماعية.", ephemeral=True)
+
+# --- أوامر السلاش (Slash Commands) ---
+
+@bot.tree.command(name="setup_gaming_hub", description="🛠️ ينشئ البنية الأساسية لغرف الألعاب واللوحات التفاعلية الثابتة بالسيرفر")
+@commands.has_permissions(administrator=True)
+async def setup_gaming_hub(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    guild = interaction.guild
+    
+    try:
+        # 1. إنشاء التصنيف الرئيسي
+        category = discord.utils.get(guild.categories, name="🎮 GAMING HUB")
+        if not category:
+            category = await guild.create_category("🎮 GAMING HUB")
+            logger.info("Category '🎮 GAMING HUB' created.")
+            
+        # 2. إنشاء قناة إطلاق الألعاب الفردية والجماعية المشتركة
+        hub_channel = discord.utils.get(category.text_channels, name="🕹️-بوابة-الألعاب")
+        if not hub_channel:
+            hub_channel = await guild.create_text_channel(
+                name="🕹️-بوابة-الألعاب",
+                category=category,
+                overwrites={guild.default_role: discord.PermissionOverwrite(send_messages=False)} # للقراءة وضغط الأزرار فقط
+            )
+            
+            embed = discord.Embed(
+                title="⚡ منظومة ألعاب النيون التنافسية الترفيهية ⚡",
+                description=(
+                    "مرحباً بك في أضخم صالة ألعاب على ديسكورد! هنا يمكنك خوض تحديات فردية أو جماعية حماسية.\n\n"
+                    "**[ 🕹️ ألعاب السولو الفردية ]**\n"
+                    "عند الضغط على الزر، سيقوم البوت بتخصيص صالة مشفرة ومخفية لك تماماً لتلعب بداخلها بأزرار فخمة.\n\n"
+                    "**[ ⚔️ ألعاب المواجهة الجماعية ]**\n"
+                    "يتيح لك إنشاء لوبي مواجهة خاص، تحديد عدد اللاعبين (مثل لاعبين اثنين فقط)، وتوليد روابط دعوة لأصدقائك."
+                ),
+                color=0x5865F2
+            )
+            embed.set_image(url="https://i.imgur.com/your_neon_banner_placeholder.png") # يمكنك استبداله برابط صورة نيون إن أردت
+            embed.set_footer(text="Sentinel Gaming System • تم تفعيل الأزرار الأبدية")
+            
+            await hub_channel.send(embed=embed, view=GamingHubControlView())
+            
+        await bot.tree.sync(guild=guild)
+        await interaction.followup.send("✅ تم إعداد وتثبيت بنية غرف الألعاب ولوحة التحكم التفاعلية بنجاح وبأعلى كفاءة!", ephemeral=True)
+        
+    except Exception as e:
+        logger.error(f"Error in setup_gaming_hub: {e}")
+        await interaction.followup.send(f"❌ فشل الإعداد: {str(e)}", ephemeral=True)
 
 async def main():
-    """Start the bot"""
     async with bot:
-        try:
-            await bot.start(DISCORD_TOKEN)
-        except Exception as e:
-            logger.critical(f"❌ Failed to start bot: {e}", exc_info=True)
-            raise
+        await bot.start(DISCORD_TOKEN)
 
 if __name__ == "__main__":
     import asyncio
