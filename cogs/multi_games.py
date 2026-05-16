@@ -5,50 +5,28 @@ import random
 class MultiGames(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.truths = [
-            "ما هو أكثر شيء تندم عليه في حياتك؟",
-            "لو أتيحت لك فرصة تغيير صفة واحدة في نفسك، ماذا ستختار؟",
-            "ما هي الكذبة الأكبر التي أخبرتها لوالديك؟"
-        ]
-        self.dares = [
-            "قم بكتابة رسالة غريبة في الشات العام واقفل حسابك لمدة ساعة.",
-            "قم بتغيير صورتك الشخصية في ديسكورد إلى صورة مضحكة يختارها الأعضاء.",
-            "اعترف للشخص الثالث في قائمة المتصلين لديك باعتراف عشوائي."
-        ]
+        self.truths = ["ما هو أكثر شيء تندم عليه في حياتك؟", "ما هي الكذبة الأكبر التي أخبرتها لوالديك؟"]
+        self.dares = ["قم بكتابة رسالة غريبة في الشات العام", "قم بتغيير صورتك الشخصية بصورة مضحكة"]
 
-    @commands.Cog.listener()
-    async def on_interaction(self, interaction: discord.Interaction):
-        if interaction.type == discord.InteractionType.component:
-            values = interaction.data.get("values", [])
-            if "truth_or_dare" in values:
-                await self.start_truth_or_dare(interaction)
-
-    async def start_truth_or_dare(self, interaction: discord.Interaction):
-        """فعالية صراحة أم تحدي الجماعية"""
+    async def trigger_truth_or_dare(self, channel: discord.TextChannel, user: discord.User):
+        """يتم استدعاؤها فوراً عند اختيار صراحة أو تحدي من اللوحة العامة"""
         view = discord.ui.View(timeout=60)
         
-        # أزرار الاختيار المباشر لقنوات الشات
-        truth_btn = discord.ui.Button(label="🗣️ صراحة", style=discord.ButtonStyle.primary, custom_id="game:truth")
-        dare_btn = discord.ui.Button(label="🔥 تحدي", style=discord.ButtonStyle.danger, custom_id="game:dare")
+        truth_btn = discord.ui.Button(label="🗣️ صراحة", style=discord.ButtonStyle.primary)
+        dare_btn = discord.ui.Button(label="🔥 تحدي", style=discord.ButtonStyle.danger)
         
         async def truth_callback(inter: discord.Interaction):
-            question = random.choice(self.truths)
-            await inter.response.send_message(f"🗣️ **سؤال الصراحة لـ {inter.user.mention}:**\n`{question}`")
+            await inter.response.send_message(f"🗣️ **سؤال الصراحة لـ {inter.user.mention}:**\n`{random.choice(self.truths)}`")
             
         async def dare_callback(inter: discord.Interaction):
-            action = random.choice(self.dares)
-            await inter.response.send_message(f"🔥 **التحدي المطلوب من {inter.user.mention}:**\n`{action}`")
+            await inter.response.send_message(f"🔥 **التحدي المطلوب من {inter.user.mention}:**\n`{random.choice(self.dares)}`")
 
         truth_btn.callback = truth_callback
         dare_btn.callback = dare_callback
-        
         view.add_item(truth_btn)
         view.add_item(dare_btn)
 
-        await interaction.channel.send(
-            content=f"🎉 {interaction.user.mention} فتح فعالية **صراحة أم تحدي**! اضغط على الأزرار بالأسفل للمشاركة:",
-            view=view
-        )
+        await channel.send(content=f"🎉 {user.mention} يفتح فعالية **صراحة أم تحدي** للجميع بالعام! شاركوا:", view=view)
 
 async def setup(bot):
     await bot.add_extension(MultiGames(bot))
