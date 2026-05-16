@@ -9,8 +9,8 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger("GamingBot")
 
-class SoloGameView(discord.ui.View):
-    """Main solo arcade game grid interface with 50+ games"""
+class SoloGamePage1View(discord.ui.View):
+    """Solo arcade games - Page 1 (Buttons 1-12)"""
     
     def __init__(self, user_id: int, channel_id: int, bot):
         super().__init__(timeout=None)
@@ -308,7 +308,7 @@ class SoloGameView(discord.ui.View):
         await interaction.response.defer()
         await self.update_activity()
         
-        proverbs = {
+        proverbs_dict = {
             "A bird in the hand is worth two in the bush": "It's better to have something certain than to risk it for something better",
             "Actions speak louder than words": "What you do is more important than what you say",
             "Better late than never": "It's better to do something late than not do it at all",
@@ -316,10 +316,10 @@ class SoloGameView(discord.ui.View):
             "Practice makes perfect": "Regular training improves your skills",
         }
         
-        proverb = random.choice(list(proverbs.keys()))
-        correct_meaning = proverbs[proverb]
+        proverb = random.choice(list(proverbs_dict.keys()))
+        correct_meaning = proverbs_dict[proverb]
         
-        wrong_meanings = [v for k, v in proverbs.items() if k != proverb]
+        wrong_meanings = [v for k, v in proverbs_dict.items() if k != proverb]
         options = [correct_meaning] + random.sample(wrong_meanings, 2)
         random.shuffle(options)
         
@@ -334,6 +334,52 @@ class SoloGameView(discord.ui.View):
             embed.add_field(name=f"Option {idx}", value=option, inline=True)
         
         await interaction.followup.send(embed=embed, view=view)
+    
+    @discord.ui.button(label="📖 Page 2 ➡️", style=discord.ButtonStyle.secondary, custom_id="solo_page2")
+    async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Navigate to page 2"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        embed = discord.Embed(
+            title="🕹️ SOLO ARCADE - PAGE 2/4",
+            description="More amazing games await!",
+            color=0x00D9FF
+        )
+        embed.add_field(name="Available Games", value="13-25 games on this page", inline=False)
+        
+        from cogs.solo_manager import SoloGamePage2View
+        await interaction.followup.send(embed=embed, view=SoloGamePage2View(self.user_id, self.channel_id, self.bot))
+
+class SoloGamePage2View(discord.ui.View):
+    """Solo arcade games - Page 2 (Buttons 13-25)"""
+    
+    def __init__(self, user_id: int, channel_id: int, bot):
+        super().__init__(timeout=None)
+        self.user_id = user_id
+        self.channel_id = channel_id
+        self.bot = bot
+    
+    async def update_activity(self):
+        """Update last activity timestamp in database"""
+        try:
+            async with self.bot.db_pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE game_channels SET last_activity = NOW() WHERE channel_id = $1",
+                    self.channel_id
+                )
+        except Exception as e:
+            logger.error(f"❌ Failed to update activity: {e}", exc_info=True)
+    
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Verify only the authorized user can interact"""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "❌ This is not your solo session!",
+                ephemeral=True
+            )
+            return False
+        return True
     
     @discord.ui.button(label="🔤 Anagrams", style=discord.ButtonStyle.success, custom_id="solo_anagrams")
     async def anagrams(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -662,6 +708,52 @@ class SoloGameView(discord.ui.View):
         
         await interaction.channel.send(embed=reaction_embed)
     
+    @discord.ui.button(label="📖 Page 3 ➡️", style=discord.ButtonStyle.secondary, custom_id="solo_page3")
+    async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Navigate to page 3"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        embed = discord.Embed(
+            title="🕹️ SOLO ARCADE - PAGE 3/4",
+            description="Even more games to discover!",
+            color=0x00D9FF
+        )
+        embed.add_field(name="Available Games", value="Games 26-38 on this page", inline=False)
+        
+        from cogs.solo_manager import SoloGamePage3View
+        await interaction.followup.send(embed=embed, view=SoloGamePage3View(self.user_id, self.channel_id, self.bot))
+
+class SoloGamePage3View(discord.ui.View):
+    """Solo arcade games - Page 3 (Buttons 26-38)"""
+    
+    def __init__(self, user_id: int, channel_id: int, bot):
+        super().__init__(timeout=None)
+        self.user_id = user_id
+        self.channel_id = channel_id
+        self.bot = bot
+    
+    async def update_activity(self):
+        """Update last activity timestamp in database"""
+        try:
+            async with self.bot.db_pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE game_channels SET last_activity = NOW() WHERE channel_id = $1",
+                    self.channel_id
+                )
+        except Exception as e:
+            logger.error(f"❌ Failed to update activity: {e}", exc_info=True)
+    
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Verify only the authorized user can interact"""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "❌ This is not your solo session!",
+                ephemeral=True
+            )
+            return False
+        return True
+    
     @discord.ui.button(label="🌑 Shadows", style=discord.ButtonStyle.danger, custom_id="solo_shadows")
     async def shadow_matching(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Shadow matching game"""
@@ -890,6 +982,52 @@ class SoloGameView(discord.ui.View):
         
         await interaction.followup.send(embed=embed)
     
+    @discord.ui.button(label="📖 Page 4 ➡️", style=discord.ButtonStyle.secondary, custom_id="solo_page4")
+    async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Navigate to page 4"""
+        await interaction.response.defer()
+        await self.update_activity()
+        
+        embed = discord.Embed(
+            title="🕹️ SOLO ARCADE - PAGE 4/4",
+            description="Final set of amazing games!",
+            color=0x00D9FF
+        )
+        embed.add_field(name="Available Games", value="Games 39-50 to complete your collection", inline=False)
+        
+        from cogs.solo_manager import SoloGamePage4View
+        await interaction.followup.send(embed=embed, view=SoloGamePage4View(self.user_id, self.channel_id, self.bot))
+
+class SoloGamePage4View(discord.ui.View):
+    """Solo arcade games - Page 4 (Buttons 39-50)"""
+    
+    def __init__(self, user_id: int, channel_id: int, bot):
+        super().__init__(timeout=None)
+        self.user_id = user_id
+        self.channel_id = channel_id
+        self.bot = bot
+    
+    async def update_activity(self):
+        """Update last activity timestamp in database"""
+        try:
+            async with self.bot.db_pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE game_channels SET last_activity = NOW() WHERE channel_id = $1",
+                    self.channel_id
+                )
+        except Exception as e:
+            logger.error(f"❌ Failed to update activity: {e}", exc_info=True)
+    
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Verify only the authorized user can interact"""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "❌ This is not your solo session!",
+                ephemeral=True
+            )
+            return False
+        return True
+    
     @discord.ui.button(label="♠️ Blackjack", style=discord.ButtonStyle.secondary, custom_id="solo_blackjack")
     async def blackjack_simulator(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Blackjack simulator"""
@@ -1101,9 +1239,9 @@ class SoloGameView(discord.ui.View):
         
         await interaction.followup.send(embed=embed)
 
+# Helper Views for Answer Selection
+
 class RPSChoiceView(discord.ui.View):
-    """Rock Paper Scissors choice selection"""
-    
     def __init__(self, bot_choice: str):
         super().__init__(timeout=None)
         self.bot_choice = bot_choice
@@ -1122,7 +1260,6 @@ class RPSChoiceView(discord.ui.View):
     
     async def play_rps(self, interaction: discord.Interaction, user_choice: str):
         await interaction.response.defer()
-        
         result = "TIE 🤝"
         if (user_choice == "Rock" and self.bot_choice == "Scissors") or \
            (user_choice == "Paper" and self.bot_choice == "Rock") or \
@@ -1130,351 +1267,215 @@ class RPSChoiceView(discord.ui.View):
             result = "YOU WIN! 🎉"
         elif user_choice != self.bot_choice:
             result = "BOT WINS ❌"
-        
-        embed = discord.Embed(
-            title="✂️ ROCK PAPER SCISSORS",
-            description=f"Your choice: **{user_choice}**\nBot choice: **{self.bot_choice}**",
-            color=0x00D9FF
-        )
+        embed = discord.Embed(title="✂️ ROCK PAPER SCISSORS", description=f"Your choice: **{user_choice}**\nBot choice: **{self.bot_choice}**", color=0x00D9FF)
         embed.add_field(name="Result", value=result, inline=False)
-        
         await interaction.followup.send(embed=embed)
 
 class TriviaView(discord.ui.View):
-    """Trivia answer selection"""
-    
     def __init__(self, correct_answer: str):
         super().__init__(timeout=None)
         self.correct_answer = correct_answer
     
-    async def check_answer(self, interaction: discord.Interaction, selected: str):
-        await interaction.response.defer()
-        
-        is_correct = selected == self.correct_answer
-        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! Correct answer: {self.correct_answer}"
-        
-        embed = discord.Embed(
-            title="🧠 TRIVIA RESULT",
-            description=result,
-            color=0x00D9FF if is_correct else 0xFF0000
-        )
-        
-        await interaction.followup.send(embed=embed)
+    @discord.ui.button(label="1", style=discord.ButtonStyle.primary, custom_id="tri_1")
+    async def opt1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="trivia_1")
-    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    @discord.ui.button(label="2", style=discord.ButtonStyle.primary, custom_id="tri_2")
+    async def opt2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="trivia_2")
-    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
-    
-    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="trivia_3")
-    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
+    @discord.ui.button(label="3", style=discord.ButtonStyle.primary, custom_id="tri_3")
+    async def opt3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
 
 class CapitalsView(discord.ui.View):
-    """Capitals game answer selection"""
-    
     def __init__(self, correct_answer: str, country: str):
         super().__init__(timeout=None)
         self.correct_answer = correct_answer
         self.country = country
     
-    async def check_answer(self, interaction: discord.Interaction, selected: str):
-        await interaction.response.defer()
-        
-        is_correct = selected == self.correct_answer
-        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! Correct answer: {self.correct_answer}"
-        
-        embed = discord.Embed(
-            title="🌍 CAPITALS RESULT",
-            description=f"Capital of {self.country}: {result}",
-            color=0x00D9FF if is_correct else 0xFF0000
-        )
-        
-        await interaction.followup.send(embed=embed)
+    @discord.ui.button(label="1", style=discord.ButtonStyle.primary, custom_id="cap_1")
+    async def opt1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send(f"✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="caps_1")
-    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    @discord.ui.button(label="2", style=discord.ButtonStyle.primary, custom_id="cap_2")
+    async def opt2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send(f"✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="caps_2")
-    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
-    
-    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="caps_3")
-    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
+    @discord.ui.button(label="3", style=discord.ButtonStyle.primary, custom_id="cap_3")
+    async def opt3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send(f"✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
 
 class FlagsView(discord.ui.View):
-    """Flags game answer selection"""
-    
     def __init__(self, correct_answer: str, flag: str):
         super().__init__(timeout=None)
         self.correct_answer = correct_answer
         self.flag = flag
     
-    async def check_answer(self, interaction: discord.Interaction, selected: str):
-        await interaction.response.defer()
-        
-        is_correct = selected == self.correct_answer
-        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! Correct answer: {self.correct_answer}"
-        
-        embed = discord.Embed(
-            title="🗺️ FLAGS RESULT",
-            description=f"{self.flag} {result}",
-            color=0x00D9FF if is_correct else 0xFF0000
-        )
-        
-        await interaction.followup.send(embed=embed)
+    @discord.ui.button(label="1", style=discord.ButtonStyle.primary, custom_id="flg_1")
+    async def opt1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="flag_1")
-    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    @discord.ui.button(label="2", style=discord.ButtonStyle.primary, custom_id="flg_2")
+    async def opt2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="flag_2")
-    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
-    
-    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="flag_3")
-    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
+    @discord.ui.button(label="3", style=discord.ButtonStyle.primary, custom_id="flg_3")
+    async def opt3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
 
 class MathView(discord.ui.View):
-    """Math game answer selection"""
-    
     def __init__(self, correct_answer: str):
         super().__init__(timeout=None)
         self.correct_answer = correct_answer
     
-    async def check_answer(self, interaction: discord.Interaction, selected: str):
-        await interaction.response.defer()
-        
-        is_correct = selected == self.correct_answer
-        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! Correct answer: {self.correct_answer}"
-        
-        embed = discord.Embed(
-            title="🧮 MATH RESULT",
-            description=result,
-            color=0x00D9FF if is_correct else 0xFF0000
-        )
-        
-        await interaction.followup.send(embed=embed)
+    @discord.ui.button(label="1", style=discord.ButtonStyle.primary, custom_id="mth_1")
+    async def opt1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="math_1")
-    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    @discord.ui.button(label="2", style=discord.ButtonStyle.primary, custom_id="mth_2")
+    async def opt2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="math_2")
-    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
-    
-    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="math_3")
-    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
+    @discord.ui.button(label="3", style=discord.ButtonStyle.primary, custom_id="mth_3")
+    async def opt3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
 
 class ProverbsView(discord.ui.View):
-    """Proverbs answer selection"""
-    
     def __init__(self, correct_answer: str, proverb: str):
         super().__init__(timeout=None)
         self.correct_answer = correct_answer
         self.proverb = proverb
     
-    async def check_answer(self, interaction: discord.Interaction, selected: str):
-        await interaction.response.defer()
-        
-        is_correct = selected == self.correct_answer
-        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! \nCorrect: {self.correct_answer}"
-        
-        embed = discord.Embed(
-            title="📜 PROVERB RESULT",
-            description=result,
-            color=0x00D9FF if is_correct else 0xFF0000
-        )
-        
-        await interaction.followup.send(embed=embed)
+    @discord.ui.button(label="1", style=discord.ButtonStyle.primary, custom_id="prv_1")
+    async def opt1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="prov_1")
-    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    @discord.ui.button(label="2", style=discord.ButtonStyle.primary, custom_id="prv_2")
+    async def opt2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="prov_2")
-    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
-    
-    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="prov_3")
-    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
+    @discord.ui.button(label="3", style=discord.ButtonStyle.primary, custom_id="prv_3")
+    async def opt3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
 
 class AnagramsView(discord.ui.View):
-    """Anagrams answer selection"""
-    
     def __init__(self, correct_answer: str, scrambled: str):
         super().__init__(timeout=None)
         self.correct_answer = correct_answer
         self.scrambled = scrambled
     
-    async def check_answer(self, interaction: discord.Interaction, selected: str):
-        await interaction.response.defer()
-        
-        is_correct = selected == self.correct_answer
-        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! Correct: {self.correct_answer}"
-        
-        embed = discord.Embed(
-            title="🔤 ANAGRAM RESULT",
-            description=result,
-            color=0x00D9FF if is_correct else 0xFF0000
-        )
-        
-        await interaction.followup.send(embed=embed)
+    @discord.ui.button(label="1", style=discord.ButtonStyle.primary, custom_id="ana_1")
+    async def opt1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="ana_1")
-    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    @discord.ui.button(label="2", style=discord.ButtonStyle.primary, custom_id="ana_2")
+    async def opt2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="ana_2")
-    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
-    
-    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="ana_3")
-    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
+    @discord.ui.button(label="3", style=discord.ButtonStyle.primary, custom_id="ana_3")
+    async def opt3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
 
 class PatternView(discord.ui.View):
-    """Pattern finder answer selection"""
-    
     def __init__(self, correct_answer: str, pattern_type: str):
         super().__init__(timeout=None)
         self.correct_answer = correct_answer
         self.pattern_type = pattern_type
     
-    async def check_answer(self, interaction: discord.Interaction, selected: str):
-        await interaction.response.defer()
-        
-        is_correct = selected == self.correct_answer
-        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! Correct: {self.correct_answer}"
-        
-        embed = discord.Embed(
-            title="📊 PATTERN RESULT",
-            description=f"{result}\nType: {self.pattern_type}",
-            color=0x00D9FF if is_correct else 0xFF0000
-        )
-        
-        await interaction.followup.send(embed=embed)
+    @discord.ui.button(label="1", style=discord.ButtonStyle.primary, custom_id="pat_1")
+    async def opt1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="pat_1")
-    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    @discord.ui.button(label="2", style=discord.ButtonStyle.primary, custom_id="pat_2")
+    async def opt2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="pat_2")
-    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
-    
-    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="pat_3")
-    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
+    @discord.ui.button(label="3", style=discord.ButtonStyle.primary, custom_id="pat_3")
+    async def opt3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_answer else "❌ WRONG!", ephemeral=True)
 
 class ColorMatchView(discord.ui.View):
-    """Color matching answer selection"""
-    
     def __init__(self, correct_emoji: str, color_name: str):
         super().__init__(timeout=None)
         self.correct_emoji = correct_emoji
         self.color_name = color_name
     
-    async def check_answer(self, interaction: discord.Interaction, selected: str):
-        await interaction.response.defer()
-        
-        is_correct = selected == self.correct_emoji
-        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! Correct: {self.correct_emoji}"
-        
-        embed = discord.Embed(
-            title="🎨 COLOR MATCH RESULT",
-            description=result,
-            color=0x00D9FF if is_correct else 0xFF0000
-        )
-        
-        await interaction.followup.send(embed=embed)
+    @discord.ui.button(label="1", style=discord.ButtonStyle.primary, custom_id="col_1")
+    async def opt1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_emoji else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="col_1")
-    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    @discord.ui.button(label="2", style=discord.ButtonStyle.primary, custom_id="col_2")
+    async def opt2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_emoji else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="col_2")
-    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
-    
-    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="col_3")
-    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
+    @discord.ui.button(label="3", style=discord.ButtonStyle.primary, custom_id="col_3")
+    async def opt3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_emoji else "❌ WRONG!", ephemeral=True)
 
 class ShadowView(discord.ui.View):
-    """Shadow matching answer selection"""
-    
     def __init__(self, correct_object: str):
         super().__init__(timeout=None)
         self.correct_object = correct_object
     
-    async def check_answer(self, interaction: discord.Interaction, selected: str):
-        await interaction.response.defer()
-        
-        is_correct = selected == self.correct_object
-        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! Correct: {self.correct_object}"
-        
-        embed = discord.Embed(
-            title="🌑 SHADOW MATCH RESULT",
-            description=result,
-            color=0x00D9FF if is_correct else 0xFF0000
-        )
-        
-        await interaction.followup.send(embed=embed)
+    @discord.ui.button(label="1", style=discord.ButtonStyle.primary, custom_id="shd_1")
+    async def opt1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_object else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="shd_1")
-    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    @discord.ui.button(label="2", style=discord.ButtonStyle.primary, custom_id="shd_2")
+    async def opt2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_object else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="shd_2")
-    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
-    
-    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="shd_3")
-    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
+    @discord.ui.button(label="3", style=discord.ButtonStyle.primary, custom_id="shd_3")
+    async def opt3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_object else "❌ WRONG!", ephemeral=True)
 
 class CardGuessView(discord.ui.View):
-    """Card guess answer selection"""
-    
     def __init__(self, correct_suit: str):
         super().__init__(timeout=None)
         self.correct_suit = correct_suit
     
-    async def check_answer(self, interaction: discord.Interaction, selected: str):
-        await interaction.response.defer()
-        
-        is_correct = selected == self.correct_suit
-        result = "✅ CORRECT!" if is_correct else f"❌ WRONG! Correct: {self.correct_suit}"
-        
-        embed = discord.Embed(
-            title="🃏 CARD GUESS RESULT",
-            description=result,
-            color=0x00D9FF if is_correct else 0xFF0000
-        )
-        
-        await interaction.followup.send(embed=embed)
+    @discord.ui.button(label="1", style=discord.ButtonStyle.primary, custom_id="crd_1")
+    async def opt1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_suit else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 1", style=discord.ButtonStyle.primary, custom_id="crd_1")
-    async def option1(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 1", "").strip())
+    @discord.ui.button(label="2", style=discord.ButtonStyle.primary, custom_id="crd_2")
+    async def opt2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_suit else "❌ WRONG!", ephemeral=True)
     
-    @discord.ui.button(label="Option 2", style=discord.ButtonStyle.primary, custom_id="crd_2")
-    async def option2(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 2", "").strip())
-    
-    @discord.ui.button(label="Option 3", style=discord.ButtonStyle.primary, custom_id="crd_3")
-    async def option3(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.check_answer(interaction, button.label.replace("Option 3", "").strip())
+    @discord.ui.button(label="3", style=discord.ButtonStyle.primary, custom_id="crd_3")
+    async def opt3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("✅ CORRECT!" if button.label == self.correct_suit else "❌ WRONG!", ephemeral=True)
 
 class SoloCreationView(discord.ui.View):
     """Main button to create solo arcade session"""
@@ -1534,18 +1535,18 @@ class SoloCreationView(discord.ui.View):
             logger.info(f"📊 Recorded solo channel {solo_channel.id} in database")
             
             welcome_embed = discord.Embed(
-                title="🕹️ SOLO ARCADE GRID",
+                title="🕹️ SOLO ARCADE GRID - PAGE 1/4",
                 description="Select a game from the grid below to start playing!",
                 color=0x00D9FF
             )
             welcome_embed.add_field(
                 name="📊 Game Selection",
-                value="Click any button to play that game. Each game is unique!",
+                value="Click any button to play that game. Each game is unique! Navigate pages with arrows.",
                 inline=False
             )
             welcome_embed.set_footer(text="Your channel will auto-delete after 15 minutes of inactivity")
             
-            await solo_channel.send(embed=welcome_embed, view=SoloGameView(user_id, solo_channel.id, interaction.client))
+            await solo_channel.send(embed=welcome_embed, view=SoloGamePage1View(user_id, solo_channel.id, interaction.client))
             
             logger.info(f"✅ Game grid deployed to solo channel {solo_channel.id}")
             
