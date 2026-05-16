@@ -4,7 +4,7 @@ import os
 import asyncio
 import logging
 from dotenv import load_dotenv
-
+from utils.database import DatabaseManager  # أو من المكان الذي وضعت فيه الملف
 # إعداد الـ Logging الاحترافي لمراقبة السيرفر ومعرفة أي حركة بدقة في Railway
 logging.basicConfig(
     level=logging.INFO,
